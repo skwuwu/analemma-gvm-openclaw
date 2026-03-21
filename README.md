@@ -136,6 +136,62 @@ MCP alone trusts the agent to call tools. A prompt-injected agent can skip them.
 Proxy alone catches URL violations but can't cross-check semantic intent.
 Together, they provide the dual-lock: cooperate if honest, enforce if compromised.
 
+## Performance: MCP vs SDK
+
+### Latency model
+
+| Path | SDK (direct) | MCP + Proxy | Notes |
+|------|-------------|-------------|-------|
+| Policy check | Inline (0 ms extra) | ~0.3 ms (`/gvm/check` round-trip) | MCP requires separate pre-check |
+| Allow overhead | +0.28 ms | +0.28 ms | Same proxy path |
+| Deny overhead | +3.8 ms | +3.8 ms | Same WAL fsync |
+| **Total (Allow)** | **~0.28 ms** | **~0.58 ms** | MCP adds one localhost round-trip |
+| **Total (Deny)** | **~3.8 ms** | **~4.1 ms** | Negligible difference |
+
+SDK evaluates policy inline during the HTTP forward (1 round-trip). MCP requires a separate `gvm_policy_check` call before the actual request (2 round-trips). The extra ~0.3 ms is a localhost HTTP call — negligible compared to external API latency (50-500 ms).
+
+Benchmark source: [Daytona sandbox measurements](https://github.com/skwuwu/analemma-gvm-daytona/blob/master/bench/results.md) (N=50, real cloud environment).
+
+### What MCP adds vs loses
+
+| Capability | SDK (Python `@ic`) | MCP + Proxy | Trade-off |
+|-----------|-------------------|-------------|-----------|
+| **SRR URL matching** | Automatic (proxy) | Automatic (proxy) | Identical |
+| **ABAC policy eval** | Automatic (`@ic()` headers) | `gvm_declare_intent` call | MCP: agent must cooperate |
+| **Cross-layer forgery** | Automatic (`max_strict`) | Intent-vs-URL cross-check | MCP: undeclared = Tier 1 only |
+| **API key isolation** | Automatic (proxy) | Automatic (proxy) | Identical |
+| **Merkle audit chain** | Automatic (proxy) | Automatic (proxy) | Identical |
+| **Checkpoint** | `auto_checkpoint="ic2+"` | `gvm_checkpoint` manual call | MCP: explicit, not automatic |
+| **Rollback on Deny** | `GVMRollbackError` auto-raised | `gvm_rollback` manual call | MCP: no exception flow |
+| **Fail-close** | Proxy down = no network | Proxy down = no network | Identical |
+| **Rate limiting** | Per-agent (header-based) | Per-agent (`X-GVM-Agent-Id`) | Identical |
+| **Language support** | Python only | Any MCP client | MCP: universal |
+| **Integration effort** | Add `@ic()` to functions | Configure MCP server | MCP: zero code changes |
+
+**Summary:** MCP trades automatic SDK integration for universal platform compatibility. The proxy enforcement layer (SRR, key isolation, Merkle audit, fail-close) is identical — it doesn't depend on MCP or SDK. The difference is in the cooperative layer: SDK does it automatically via decorators; MCP relies on the agent calling tools, with the proxy as safety net.
+
+### When to use which
+
+| Scenario | Recommended | Reason |
+|----------|-------------|--------|
+| Python agent, deep integration | SDK (`@ic` + `GVMAgent`) | Automatic forgery detection, auto-checkpoint |
+| OpenClaw / Claude Desktop / Cursor | MCP server | Universal, zero code changes |
+| Multi-language environment | MCP server | Language-agnostic |
+| Maximum security (production) | SDK + `--sandbox` | Automatic + namespace isolation + seccomp |
+| Quick evaluation | MCP server | Install in 2 minutes, no code changes |
+
+## System requirements
+
+| Component | SDK approach | MCP approach |
+|-----------|-------------|-------------|
+| GVM proxy | `cargo binstall gvm-proxy` | `cargo binstall gvm-proxy` |
+| Runtime | Python 3.9+ | Node.js 18+ |
+| SDK | `pip install gvm` | Not needed |
+| MCP server | Not needed | This package (`npm run build`) |
+| Agent platform | Any (manual `HTTP_PROXY`) | OpenClaw, Claude Desktop, Cursor, Windsurf, etc. |
+| OS | Any | Any |
+| Linux isolation | `--sandbox` flag (optional) | `--sandbox` flag (optional) |
+
 ## Environment variables
 
 | Variable | Default | Description |
