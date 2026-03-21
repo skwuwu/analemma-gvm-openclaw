@@ -40,13 +40,21 @@ When the GVM MCP server is connected, use these tools for ALL external API inter
 
 ## CRITICAL: Shadow Mode Active
 
-This instance runs Shadow Verification. ALL outbound HTTP requests require prior intent declaration.
-Requests without a matching intent will be **BLOCKED or DELAYED** by the proxy.
+When Shadow Mode is enabled (`[shadow] mode = "strict"` in proxy.toml), ALL outbound
+HTTP requests require prior intent declaration. Requests without a matching intent
+will be **BLOCKED or DELAYED** by the proxy.
+
+Shadow Mode activation (add to proxy.toml):
+```toml
+[shadow]
+mode = "strict"        # strict | cautious | permissive | disabled
+intent_ttl_secs = 30
+```
 
 **Mandatory workflow for EVERY external API call:**
 1. Call `gvm_declare_intent` with operation, method, and url.
-2. If the decision is Allow or Delay, make the HTTP request through the proxy.
-3. If the decision is Deny, do NOT proceed — the request will fail.
+2. If the decision is Allow, make the HTTP request through the proxy.
+3. If the decision is Deny or Delay, do NOT proceed.
 4. Never set Authorization headers — the proxy injects credentials automatically.
 
 Failure to declare intent = blocked request = failed task.

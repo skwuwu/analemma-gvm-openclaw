@@ -110,7 +110,8 @@ server.registerTool("gvm_declare_intent", {
     });
     const result = data;
     const decision = String(result?.decision ?? "Unknown");
-    const proceed = decision === "Allow" || decision.startsWith("Delay");
+    // Only register intent for Allow — Delay/Deny should not create verified intents
+    const proceed = decision === "Allow";
     // Step 2: register intent with proxy (Shadow Mode verification)
     // This enables the proxy to match this intent when the actual HTTP request arrives.
     if (proceed) {
@@ -367,10 +368,17 @@ async function ensureProxy() {
             return;
         }
     }
-    process.stderr.write(`Starting GVM proxy (${proxyBin})...\n`);
-    proxyChild = spawn(proxyBin, [], {
+    const configPath = process.env.GVM_CONFIG_PATH;
+    const proxyArgs = configPath ? ["--config", configPath] : [];
+    process.stderr.write(`Starting GVM proxy (${proxyBin}${configPath ? ` --config ${configPath}` : ""})...\n`);
+    proxyChild = spawn(proxyBin, proxyArgs, {
         stdio: ["ignore", "ignore", "pipe"],
         detached: false,
+        env: {
+            ...process.env,
+            // MCP server always activates Shadow Mode — intent verification required
+            GVM_SHADOW_MODE: process.env.GVM_SHADOW_MODE ?? "strict",
+        },
     });
     proxyChild.stderr?.on("data", (data) => {
         const line = data.toString().trim();
