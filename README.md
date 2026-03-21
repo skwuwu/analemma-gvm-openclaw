@@ -6,10 +6,11 @@ AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https:
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/J0baK30qyHuhwvTU.svg)](https://asciinema.org/a/J0baK30qyHuhwvTU)
+[![asciicast](https://asciinema.org/a/1GOBMe6Ot3Weyaxu.svg)](https://asciinema.org/a/1GOBMe6Ot3Weyaxu)
 
-> Recorded with a live GVM proxy + OpenClaw agent (Claude Sonnet 4) using the maintainer's personal API key.
-> Intent registration, policy check (Allow/Deny), and agent governance query — all real, no mock.
+> Live demo: GVM proxy + OpenClaw agent (Claude Sonnet 4), maintainer's API key.
+> Before/After comparison, intent verification, ACCESS DENIED on wire transfer,
+> OpenClaw agent receives Deny verdict, measured latency benchmark (N=20).
 
 ## Zero Infrastructure
 
