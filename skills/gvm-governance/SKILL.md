@@ -27,46 +27,42 @@ GVM is a security kernel for AI agent I/O. It governs what agents **do**, not wh
 All outbound HTTP requests pass through the GVM proxy, which enforces policies, injects credentials,
 and writes an immutable audit log (WAL).
 
-## MCP Tools Available
+## How to make API calls
 
-When the GVM MCP server is connected, use these tools for ALL external API interactions:
+Use `gvm_fetch`, `gvm_read`, or `gvm_write` for ALL external API calls.
+These tools automatically handle intent declaration, policy verification, and proxy routing.
+One tool call = intent + execution. No separate steps needed.
 
-1. **gvm_policy_check(method, url)** — Check if a request would be allowed BEFORE making it.
-2. **gvm_declare_intent(operation, method, url)** — Declare your intent for cross-layer forgery detection.
-3. **gvm_request_secret(host)** — Confirm credential injection (never set auth headers yourself).
-4. **gvm_checkpoint(label, step)** — Save state before risky operations.
-5. **gvm_rollback(step)** — Restore to checkpoint after a Deny.
-6. **gvm_audit_log()** — View recent governance decisions.
+**Primary tools:**
 
-## CRITICAL: Shadow Mode Active
+- **gvm_fetch(operation, method, url, body?)** — General HTTP request with governance
+- **gvm_read(operation, url)** — GET shorthand for read-only calls
+- **gvm_write(operation, url, body)** — POST shorthand for write calls
 
-When Shadow Mode is enabled (`[shadow] mode = "strict"` in proxy.toml), ALL outbound
-HTTP requests require prior intent declaration. Requests without a matching intent
-will be **BLOCKED or DELAYED** by the proxy.
+**Examples:**
 
-Shadow Mode activation (add to proxy.toml):
-```toml
-[shadow]
-mode = "strict"        # strict | cautious | permissive | disabled
-intent_ttl_secs = 30
+```
+gvm_read("stripe.list_charges", "https://api.stripe.com/v1/charges")
+gvm_write("slack.send_message", "https://slack.com/api/chat.postMessage", '{"channel":"#general","text":"hello"}')
+gvm_fetch("github.create_pr", "POST", "https://api.github.com/repos/owner/repo/pulls", '{"title":"..."}')
 ```
 
-**Mandatory workflow for EVERY external API call:**
-1. Call `gvm_declare_intent` with operation, method, and url.
-2. If the decision is Allow, make the HTTP request through the proxy.
-3. If the decision is Deny or Delay, do NOT proceed.
-4. Never set Authorization headers — the proxy injects credentials automatically.
+If the request is blocked by policy, the tool returns `{"blocked": true, "decision": "Deny", "error": "..."}`.
+If allowed, it returns `{"decision": "Allow", "status": 200, "response": {...}}`.
 
-Failure to declare intent = blocked request = failed task.
-Declaring intent = fast path = successful execution.
+**Supporting tools:**
+- **gvm_policy_check(method, url)** — Dry-run: will this request be allowed?
+- **gvm_checkpoint(label, step)** — Save state before risky operations
+- **gvm_rollback(step)** — Restore to checkpoint after a Deny
+- **gvm_audit_log()** — View recent governance decisions
+- **gvm_load_rulesets(installed_skills)** — Auto-detect skills and load matching rules
 
-## Core rules
+## Rules
 
-- Never bypass the proxy. All external API calls must go through `HTTP_PROXY=http://localhost:8080`.
-- Never store API keys in agent env. Keys live in `config/secrets.toml` — the proxy injects them post-enforcement.
-- Every governance decision (Allow/Delay/Deny) is recorded in the WAL with SHA-256 Merkle chaining.
-- If proxy is down, fail closed — no direct HTTPS connections to external APIs.
-- Always call `gvm_declare_intent` before external requests. Undeclared requests trigger Default-to-Caution (Delay).
+- Use `gvm_fetch`/`gvm_read`/`gvm_write` for ALL external HTTP requests.
+- Do NOT use `exec curl` or direct HTTP tools for external APIs — they bypass governance.
+- Do NOT set Authorization headers — the proxy injects credentials automatically.
+- If a request returns `blocked: true`, do NOT retry with a different tool. The policy applies regardless.
 
 ## Architecture (3 layers)
 

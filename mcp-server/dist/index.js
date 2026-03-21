@@ -84,22 +84,11 @@ server.registerTool("gvm_policy_check", {
         ? JSON.stringify(data, null, 2)
         : `GVM check failed (HTTP ${status}): ${JSON.stringify(data)}`);
 });
-// ── Tool 2: gvm_declare_intent ───────────────────────────────────────────────
-server.registerTool("gvm_declare_intent", {
-    title: "GVM Declare Intent",
-    description: "Declare what you intend to do BEFORE making an API call. " +
-        "Registers your semantic operation with the proxy for cross-layer forgery detection. " +
-        "Returns the policy decision — if Deny, do NOT proceed.",
-    inputSchema: {
-        operation: z.string().describe("Semantic operation (e.g. gvm.data.read, gvm.payment.charge)"),
-        method: z.string().describe("HTTP method you plan to use"),
-        url: z.string().describe("Target URL you plan to call"),
-        reason: z.string().optional().describe("Brief reason for this action (logged in WAL)"),
-    },
-}, async (args) => {
+// ── Internal: declare intent + execute via proxy ─────────────────────────────
+async function declareAndFetch(args) {
     const parsed = new URL(args.url);
-    // Step 1: dry-run policy check
-    const { data } = await gvmFetch("/gvm/check", {
+    // Step 1: policy check (dry-run)
+    const { data: checkData } = await gvmFetch("/gvm/check", {
         method: "POST",
         body: {
             method: args.method,
@@ -108,32 +97,127 @@ server.registerTool("gvm_declare_intent", {
             operation: args.operation,
         },
     });
-    const result = data;
-    const decision = String(result?.decision ?? "Unknown");
-    // Only register intent for Allow — Delay/Deny should not create verified intents
-    const proceed = decision === "Allow";
-    // Step 2: register intent with proxy (Shadow Mode verification)
-    // This enables the proxy to match this intent when the actual HTTP request arrives.
-    if (proceed) {
-        await gvmFetch("/gvm/intent", {
-            method: "POST",
-            body: {
-                method: args.method,
-                host: parsed.host,
-                path: parsed.pathname,
-                operation: args.operation,
-                agent_id: GVM_AGENT_ID,
-            },
+    const checkResult = checkData;
+    const decision = String(checkResult?.decision ?? "Unknown");
+    if (decision !== "Allow") {
+        return {
+            decision,
+            error: String(checkResult?.next_action ?? "Request blocked by policy"),
+        };
+    }
+    // Step 2: register intent (Shadow Mode verification)
+    await gvmFetch("/gvm/intent", {
+        method: "POST",
+        body: {
+            method: args.method,
+            host: parsed.host,
+            path: parsed.pathname,
+            operation: args.operation,
+            agent_id: GVM_AGENT_ID,
+        },
+    });
+    // Step 3: execute request through proxy
+    const reqHeaders = {
+        "X-GVM-Agent-Id": GVM_AGENT_ID,
+        ...(args.headers ?? {}),
+    };
+    if (GVM_TENANT_ID) {
+        reqHeaders["X-GVM-Tenant-Id"] = GVM_TENANT_ID;
+    }
+    if (args.body) {
+        reqHeaders["Content-Type"] = reqHeaders["Content-Type"] ?? "application/json";
+    }
+    try {
+        const resp = await fetch(args.url, {
+            method: args.method,
+            headers: reqHeaders,
+            body: args.body ?? undefined,
+            // Route through proxy via fetch agent (Node 18+ respects HTTP_PROXY)
         });
+        const ct = resp.headers.get("content-type") ?? "";
+        let responseData;
+        if (ct.includes("application/json")) {
+            responseData = await resp.json();
+        }
+        else {
+            responseData = await resp.text();
+        }
+        return { decision: "Allow", status: resp.status, response: responseData };
+    }
+    catch (err) {
+        return {
+            decision: "Allow",
+            status: 0,
+            error: `Request failed: ${err instanceof Error ? err.message : String(err)}`,
+        };
+    }
+}
+// ── Tool 2: gvm_fetch ────────────────────────────────────────────────────────
+server.registerTool("gvm_fetch", {
+    title: "GVM Fetch",
+    description: "Execute an HTTP request with governance verification. " +
+        "Automatically declares intent, checks policy, and routes through the GVM proxy. " +
+        "Use this for ALL external API calls. One tool call = intent + execution.",
+    inputSchema: {
+        operation: z.string().describe("What you're doing (e.g. stripe.read_charges, github.create_issue)"),
+        method: z.string().describe("HTTP method: GET, POST, PUT, DELETE"),
+        url: z.string().describe("Full URL (e.g. https://api.stripe.com/v1/charges)"),
+        headers: z.record(z.string(), z.string()).optional().describe("Additional HTTP headers"),
+        body: z.string().optional().describe("Request body (JSON string)"),
+    },
+}, async (args) => {
+    const result = await declareAndFetch(args);
+    if (result.error && !result.response) {
+        return ok(JSON.stringify({
+            decision: result.decision,
+            blocked: true,
+            error: result.error,
+        }, null, 2));
     }
     return ok(JSON.stringify({
-        decision,
-        operation: args.operation,
-        target: `${args.method} ${args.url}`,
-        proceed,
-        ...(proceed ? {} : { action: "Do NOT proceed. This request will be blocked." }),
-        ...(result?.matched_rule ? { matched_rule: result.matched_rule } : {}),
+        decision: result.decision,
+        status: result.status,
+        response: result.response,
+        ...(result.error ? { warning: result.error } : {}),
     }, null, 2));
+});
+// ── Tool 2a: gvm_read ────────────────────────────────────────────────────────
+server.registerTool("gvm_read", {
+    title: "GVM Read",
+    description: "Read data from an external API with governance verification. " +
+        "Shorthand for gvm_fetch with method=GET. " +
+        "Use for read-only API calls (list, get, search).",
+    inputSchema: {
+        operation: z.string().describe("What you're reading (e.g. stripe.list_charges, github.get_issues)"),
+        url: z.string().describe("Full URL to read from"),
+    },
+}, async (args) => {
+    const result = await declareAndFetch({
+        operation: args.operation,
+        method: "GET",
+        url: args.url,
+    });
+    return ok(JSON.stringify(result, null, 2));
+});
+// ── Tool 2b: gvm_write ───────────────────────────────────────────────────────
+server.registerTool("gvm_write", {
+    title: "GVM Write",
+    description: "Write data to an external API with governance verification. " +
+        "Shorthand for gvm_fetch with method=POST. " +
+        "Use for write operations (create, update, send).",
+    inputSchema: {
+        operation: z.string().describe("What you're writing (e.g. slack.send_message, github.create_issue)"),
+        url: z.string().describe("Full URL to write to"),
+        body: z.string().describe("Request body (JSON string)"),
+    },
+}, async (args) => {
+    const result = await declareAndFetch({
+        operation: args.operation,
+        method: "POST",
+        url: args.url,
+        body: args.body,
+    });
+    return ok(JSON.stringify(result, null, 2));
 });
 // ── Tool 3: gvm_request_secret ───────────────────────────────────────────────
 server.registerTool("gvm_request_secret", {

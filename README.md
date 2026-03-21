@@ -96,15 +96,25 @@ Verify: `curl -s http://localhost:8080/gvm/health` → `{"status":"healthy"}`
 
 ## MCP Tools
 
+**Use these for ALL external API calls** — one call = intent declaration + policy check + execution:
+
+| Tool | What it does | Example |
+|------|-------------|---------|
+| **`gvm_fetch`** | HTTP request with governance | `gvm_fetch("stripe.read", "GET", "https://api.stripe.com/v1/charges")` |
+| **`gvm_read`** | GET shorthand | `gvm_read("github.list_issues", "https://api.github.com/repos/o/r/issues")` |
+| **`gvm_write`** | POST shorthand | `gvm_write("slack.send", "https://slack.com/api/chat.postMessage", body)` |
+
+Supporting tools:
+
 | Tool | What it does |
 |------|-------------|
-| `gvm_declare_intent` | Declare operation before API call — **required in Shadow Mode** |
 | `gvm_policy_check` | Dry-run: will this request be allowed? |
-| `gvm_request_secret` | Confirm credential auto-injection (never set auth headers) |
 | `gvm_checkpoint` | Save state before risky operations |
 | `gvm_rollback` | Restore to checkpoint after a Deny |
 | `gvm_audit_log` | View recent governance decisions |
 | `gvm_load_rulesets` | Auto-detect installed skills → load matching rules |
+
+No separate `declare_intent` step needed — `gvm_fetch`/`gvm_read`/`gvm_write` handle it automatically.
 
 ---
 
