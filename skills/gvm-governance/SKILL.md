@@ -59,7 +59,7 @@ If allowed, it returns `{"decision": "Allow", "status": 200, "response": {...}}`
 - **gvm_status()** — Current shadow mode, proxy health, active intents
 - **gvm_audit_log(last_n?, filter?)** — Recent decisions from WAL
 - **gvm_blocked_summary(period?)** — Human-readable security summary
-- **gvm_load_rulesets(installed_skills)** — Auto-detect skills and load rules
+- **gvm_select_rulesets(apply?)** — List or apply governance rulesets (user must choose explicitly)
 
 ## Rules
 

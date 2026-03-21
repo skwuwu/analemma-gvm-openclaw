@@ -107,7 +107,7 @@ One call = intent declaration + policy check + execution. No separate steps.
 | `gvm_status` | "Is GVM running?" "What's my security status?" |
 | `gvm_blocked_summary` | "What was blocked today?" "Security summary for the last hour" |
 | `gvm_audit_log` | "Show recent denied requests" "Last 10 governance decisions" |
-| `gvm_load_rulesets` | "Load rules for my installed skills" |
+| `gvm_select_rulesets` | "What rulesets are available?" / "Apply gmail and github rules" |
 
 ---
 

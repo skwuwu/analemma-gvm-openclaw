@@ -673,15 +673,13 @@ server.registerTool(
   },
 );
 
-// ── Tool 7: gvm_load_rulesets ─────────────────────────────────────────────────
+// ── Tool 7: gvm_select_rulesets — user-driven, never auto-detect ─────────────
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Resolve rulesets dir relative to this file (works in dist/ too)
 function findRulesetsDir(): string {
-  // Try: repo root/rulesets (dev), then relative to dist/
   const candidates = [
     join(dirname(fileURLToPath(import.meta.url)), "..", "..", "rulesets"),
     join(dirname(fileURLToPath(import.meta.url)), "..", "rulesets"),
@@ -690,116 +688,156 @@ function findRulesetsDir(): string {
   for (const dir of candidates) {
     if (existsSync(dir)) return dir;
   }
-  return candidates[0]; // fallback
+  return candidates[0];
 }
 
-interface RegistryEntry {
-  ruleset: string;
-  domains: string[];
-}
-
-interface SkillRegistry {
-  skills: Record<string, RegistryEntry>;
-  local_only_skills: string[];
+function findConfigDir(): string {
+  const candidates = [
+    join(process.cwd(), "config"),
+    join(process.env.HOME ?? "", ".gvm", "config"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+  return candidates[0];
 }
 
 server.registerTool(
-  "gvm_load_rulesets",
+  "gvm_select_rulesets",
   {
-    title: "GVM Load Rulesets",
+    title: "GVM Select Rulesets",
     description:
-      "Auto-detect installed OpenClaw skills and load matching GVM governance rulesets. " +
-      "Call this at session start to configure the proxy with skill-appropriate rules. " +
-      "Returns which rulesets were loaded and which skills have no matching ruleset.",
+      "Show available governance rulesets and apply user-selected ones to the proxy. " +
+      "NEVER auto-detect or auto-apply. The user must explicitly choose which rulesets to load. " +
+      "If called without 'apply', lists available rulesets with descriptions. " +
+      "If called with 'apply', copies selected rulesets to proxy config and triggers reload.",
     inputSchema: {
-      installed_skills: z
+      apply: z
         .array(z.string())
-        .describe("List of installed OpenClaw skill names (from /skills command)"),
+        .optional()
+        .describe(
+          "Rulesets to apply (e.g. ['gmail', 'github']). " +
+          "Omit to list available rulesets without applying.",
+        ),
     },
   },
   async (args) => {
     const rulesetsDir = findRulesetsDir();
-    let registry: SkillRegistry;
 
+    // List available rulesets
+    let available: Array<{ name: string; file: string; description: string }> = [];
     try {
-      const raw = readFileSync(join(rulesetsDir, "registry.json"), "utf-8");
-      registry = JSON.parse(raw) as SkillRegistry;
+      const files = readdirSync(rulesetsDir).filter(
+        (f) => f.endsWith(".toml") && !f.startsWith("_"),
+      );
+      for (const file of files) {
+        const name = file.replace(".toml", "");
+        // Path traversal prevention
+        if (file.includes("..") || file.includes("/") || file.includes("\\")) continue;
+        try {
+          const content = readFileSync(join(rulesetsDir, file), "utf-8");
+          const ruleCount = (content.match(/\[\[rules\]\]/g) || []).length;
+          // Extract first comment line as description
+          const descLine = content.split("\n").find((l) => l.startsWith("# GVM Ruleset:") || l.startsWith("# Covers:"));
+          const desc = descLine?.replace(/^#\s*/, "") ?? `${ruleCount} rules`;
+          available.push({ name, file, description: desc });
+        } catch {
+          available.push({ name, file, description: "(unreadable)" });
+        }
+      }
     } catch {
+      return ok(JSON.stringify({ error: "rulesets directory not found" }));
+    }
+
+    // List mode: show what's available
+    if (!args.apply || args.apply.length === 0) {
       return ok(
-        JSON.stringify({
-          error: "registry.json not found",
-          rulesets_dir: rulesetsDir,
-        }),
+        JSON.stringify(
+          {
+            mode: "list",
+            available: available.map((r) => ({
+              name: r.name,
+              description: r.description,
+            })),
+            usage:
+              "Call gvm_select_rulesets with apply=['gmail','github'] to activate. " +
+              "Default: all external requests blocked (Shadow strict). " +
+              "Each ruleset you add opens specific domains with specific permissions.",
+          },
+          null,
+          2,
+        ),
       );
     }
 
-    const loaded: Array<{ skill: string; ruleset: string; domains: string[] }> = [];
-    const local_only: string[] = [];
-    const no_ruleset: string[] = [];
-    const seen_rulesets = new Set<string>();
+    // Apply mode: copy selected rulesets to config dir
+    const configDir = findConfigDir();
+    const applied: Array<{ name: string; domains: string; rules: number }> = [];
+    const errors: string[] = [];
 
-    for (const skill of args.installed_skills) {
-      if (registry.local_only_skills.includes(skill)) {
-        local_only.push(skill);
+    for (const name of args.apply) {
+      // Validate: simple name only
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+        errors.push(`${name}: invalid name (alphanumeric only)`);
+        continue;
+      }
+      const file = `${name}.toml`;
+      const srcPath = join(rulesetsDir, file);
+      if (!existsSync(srcPath)) {
+        errors.push(`${name}: ruleset not found`);
         continue;
       }
 
-      const entry = registry.skills[skill];
-      if (entry && !seen_rulesets.has(entry.ruleset)) {
-        // Path traversal prevention: ruleset name must be a simple filename
-        if (entry.ruleset.includes("..") || entry.ruleset.includes("/") || entry.ruleset.includes("\\")) {
-          no_ruleset.push(`${skill} (invalid ruleset path: ${entry.ruleset})`);
+      try {
+        const content = readFileSync(srcPath, "utf-8");
+        const ruleCount = (content.match(/\[\[rules\]\]/g) || []).length;
+
+        // Extract domains from patterns
+        const domains = new Set<string>();
+        for (const match of content.matchAll(/pattern\s*=\s*"([^"\/]+)/g)) {
+          if (match[1]) domains.add(match[1]);
+        }
+
+        // Append to srr_network.toml (not overwrite)
+        const srrPath = join(configDir, "srr_network.toml");
+        const marker = `\n# ── Ruleset: ${name} (applied by GVM MCP) ──\n`;
+        const existing = existsSync(srrPath) ? readFileSync(srrPath, "utf-8") : "";
+
+        if (existing.includes(marker)) {
+          errors.push(`${name}: already applied (remove manually to re-apply)`);
           continue;
         }
-        seen_rulesets.add(entry.ruleset);
 
-        // Read the ruleset file
-        try {
-          const content = readFileSync(join(rulesetsDir, entry.ruleset), "utf-8");
-          const ruleCount = (content.match(/\[\[rules\]\]/g) || []).length;
-          loaded.push({
-            skill,
-            ruleset: entry.ruleset,
-            domains: entry.domains,
-          });
-        } catch {
-          no_ruleset.push(`${skill} (ruleset file missing: ${entry.ruleset})`);
-        }
-      } else if (!entry) {
-        no_ruleset.push(skill);
+        writeFileSync(srrPath, existing + marker + content + "\n", "utf-8");
+        applied.push({
+          name,
+          domains: [...domains].join(", "),
+          rules: ruleCount,
+        });
+      } catch (e) {
+        errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    // List available rulesets for reference
-    let available: string[] = [];
-    try {
-      available = readdirSync(rulesetsDir).filter(
-        (f) => f.endsWith(".toml") && !f.startsWith("_"),
-      );
-    } catch {
-      // ignore
+    // Restart proxy to pick up new rules (proxy doesn't support hot-reload yet)
+    if (applied.length > 0 && proxyChild) {
+      process.stderr.write("Restarting proxy to apply new rulesets...\n");
+      proxyChild.kill();
+      proxyChild = null;
+      // Wait for process to exit, then re-launch
+      await new Promise((r) => setTimeout(r, 1000));
+      await ensureProxy();
     }
 
     return ok(
       JSON.stringify(
         {
-          loaded,
-          local_only_skills: local_only,
-          no_ruleset:
-            no_ruleset.length > 0
-              ? {
-                  skills: no_ruleset,
-                  action:
-                    "These skills have no matching ruleset. Their domains will use " +
-                    "Default-to-Caution (Delay) or Shadow Mode policy. " +
-                    "Review logs with `gvm audit list` and consider contributing a ruleset.",
-                }
-              : "all skills covered",
-          available_rulesets: available,
-          apply_command:
-            loaded.length > 0
-              ? `Copy matched rulesets to GVM config: cp rulesets/{${loaded.map((l) => l.ruleset).join(",")}} config/`
-              : "No rulesets to apply",
+          mode: "apply",
+          applied,
+          errors: errors.length > 0 ? errors : undefined,
+          note: applied.length > 0
+            ? "Rules appended to srr_network.toml. Proxy will reload automatically."
+            : "No rules applied.",
         },
         null,
         2,
