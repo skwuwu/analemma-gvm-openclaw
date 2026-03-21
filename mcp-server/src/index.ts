@@ -819,14 +819,18 @@ server.registerTool(
       }
     }
 
-    // Restart proxy to pick up new rules (proxy doesn't support hot-reload yet)
-    if (applied.length > 0 && proxyChild) {
-      process.stderr.write("Restarting proxy to apply new rulesets...\n");
-      proxyChild.kill();
-      proxyChild = null;
-      // Wait for process to exit, then re-launch
-      await new Promise((r) => setTimeout(r, 1000));
-      await ensureProxy();
+    // Hot-reload: tell proxy to re-read SRR config without restart
+    if (applied.length > 0) {
+      try {
+        const { status, data } = await gvmFetch("/gvm/reload", { method: "POST" });
+        if (status === 200) {
+          process.stderr.write("SRR rules hot-reloaded (proxy stayed up).\n");
+        } else {
+          process.stderr.write(`SRR reload returned ${status}: ${JSON.stringify(data)}\n`);
+        }
+      } catch (e) {
+        process.stderr.write(`SRR reload failed: ${e}. Rules will apply on next proxy restart.\n`);
+      }
     }
 
     return ok(
