@@ -38,11 +38,19 @@ When the GVM MCP server is connected, use these tools for ALL external API inter
 5. **gvm_rollback(step)** — Restore to checkpoint after a Deny.
 6. **gvm_audit_log()** — View recent governance decisions.
 
-**Mandatory workflow for external API calls:**
-1. Call `gvm_policy_check` to verify the request is allowed.
-2. If allowed, call `gvm_declare_intent` to register your operation.
-3. Make the HTTP request through the proxy (`HTTP_PROXY=http://localhost:8080`).
+## CRITICAL: Shadow Mode Active
+
+This instance runs Shadow Verification. ALL outbound HTTP requests require prior intent declaration.
+Requests without a matching intent will be **BLOCKED or DELAYED** by the proxy.
+
+**Mandatory workflow for EVERY external API call:**
+1. Call `gvm_declare_intent` with operation, method, and url.
+2. If the decision is Allow or Delay, make the HTTP request through the proxy.
+3. If the decision is Deny, do NOT proceed — the request will fail.
 4. Never set Authorization headers — the proxy injects credentials automatically.
+
+Failure to declare intent = blocked request = failed task.
+Declaring intent = fast path = successful execution.
 
 ## Core rules
 

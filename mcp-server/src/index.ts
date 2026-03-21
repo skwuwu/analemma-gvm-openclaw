@@ -133,6 +133,8 @@ server.registerTool(
   },
   async (args) => {
     const parsed = new URL(args.url);
+
+    // Step 1: dry-run policy check
     const { data } = await gvmFetch("/gvm/check", {
       method: "POST",
       body: {
@@ -147,21 +149,18 @@ server.registerTool(
     const decision = String(result?.decision ?? "Unknown");
     const proceed = decision === "Allow" || decision.startsWith("Delay");
 
-    // Store intent in vault for proxy cross-reference
+    // Step 2: register intent with proxy (Shadow Mode verification)
+    // This enables the proxy to match this intent when the actual HTTP request arrives.
     if (proceed) {
-      await gvmFetch("/gvm/vault", {
+      await gvmFetch("/gvm/intent", {
         method: "POST",
         body: {
-          key: `intent:${Date.now()}`,
-          value: JSON.stringify({
-            operation: args.operation,
-            method: args.method,
-            url: args.url,
-            reason: args.reason ?? "",
-            declared_at: new Date().toISOString(),
-          }),
+          method: args.method,
+          host: parsed.host,
+          path: parsed.pathname,
+          operation: args.operation,
+          agent_id: GVM_AGENT_ID,
         },
-        params: { agent_id: GVM_AGENT_ID },
       });
     }
 
