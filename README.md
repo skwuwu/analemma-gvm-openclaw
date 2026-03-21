@@ -32,12 +32,23 @@ GVM fits in the same resource envelope as a reverse proxy (nginx, envoy) — bec
 
 | Component | Requirement |
 |-----------|-------------|
-| GVM proxy | Any OS, ~50MB disk, ~5MB RAM |
+| GVM proxy | **Linux / macOS / Windows**, ~50MB disk, ~5MB RAM |
 | MCP server | Node.js 18+ (for JSON-RPC stdio bridge) |
 | Network | Localhost only (proxy ↔ MCP ↔ agent on same machine) |
 | GPU | Not needed. Ever. |
-| Docker | Not needed (optional `--contained` mode for production) |
 | External services | None (WAL is local file, vault is in-memory AES-256-GCM) |
+
+**OS-dependent features:**
+
+| Feature | Linux | macOS | Windows |
+|---------|-------|-------|---------|
+| HTTP proxy + SRR + WAL + Merkle | Yes | Yes | Yes |
+| MCP intent verification (Shadow Mode) | Yes | Yes | Yes |
+| API key isolation | Yes | Yes | Yes |
+| `--sandbox` (namespace + seccomp + eBPF) | **Yes** | No | No |
+| `--contained` (Docker isolation) | Yes | Yes | Yes (Docker Desktop) |
+
+The proxy and all governance logic run on any OS. **Structural bypass prevention** (`--sandbox`) requires Linux kernel features (user namespaces, seccomp-BPF, TC eBPF filter). Without `--sandbox`, the proxy governs traffic that passes through it, but an agent could bypass by making direct HTTPS connections.
 
 ## Dual-Lock Architecture
 
@@ -270,8 +281,8 @@ Benchmark source: [Daytona sandbox measurements](https://github.com/skwuwu/anale
 | SDK | `pip install gvm` | Not needed |
 | MCP server | Not needed | This package (`npm run build`) |
 | Agent platform | Any (manual `HTTP_PROXY`) | OpenClaw, Claude Desktop, Cursor, Windsurf, etc. |
-| OS | Any | Any |
-| Linux isolation | `--sandbox` flag (optional) | `--sandbox` flag (optional) |
+| OS (proxy + governance) | Linux / macOS / Windows | Linux / macOS / Windows |
+| OS (structural isolation) | **Linux only** (`--sandbox`) | **Linux only** (`--sandbox`) |
 
 ## Environment variables
 
