@@ -116,6 +116,21 @@ server.registerTool(
 
 // ── Internal: declare intent + execute via proxy ─────────────────────────────
 
+// Max request body size (5MB)
+const MAX_BODY_SIZE = 5 * 1024 * 1024;
+// Allowed URL schemes
+const ALLOWED_SCHEMES = new Set(["http:", "https:"]);
+// Headers that must not be set by the agent
+const BLOCKED_HEADERS = new Set([
+  "authorization", "cookie", "proxy-authorization",
+  "x-api-key", "x-auth-token", "x-gvm-agent-id", "x-gvm-tenant-id",
+  "host",
+]);
+// Fetch timeout (30s)
+const FETCH_TIMEOUT_MS = 30_000;
+// Max WAL lines to read
+const MAX_WAL_LINES = 50_000;
+
 async function declareAndFetch(args: {
   operation: string;
   method: string;
@@ -123,7 +138,26 @@ async function declareAndFetch(args: {
   headers?: Record<string, string>;
   body?: string;
 }): Promise<{ decision: string; status?: number; response?: unknown; error?: string }> {
-  const parsed = new URL(args.url);
+  // Validate URL scheme (prevent file://, data://, SSRF to metadata endpoints)
+  let parsed: URL;
+  try {
+    parsed = new URL(args.url);
+  } catch {
+    return { decision: "Deny", error: "Invalid URL" };
+  }
+  if (!ALLOWED_SCHEMES.has(parsed.protocol)) {
+    return { decision: "Deny", error: `Scheme ${parsed.protocol} not allowed (http/https only)` };
+  }
+
+  // Validate body size
+  if (args.body && args.body.length > MAX_BODY_SIZE) {
+    return { decision: "Deny", error: `Body too large (${args.body.length} > ${MAX_BODY_SIZE} bytes)` };
+  }
+
+  // Validate operation (alphanumeric + dots + underscores only)
+  if (args.operation && !/^[a-zA-Z0-9._-]+$/.test(args.operation)) {
+    return { decision: "Deny", error: "Invalid operation name (alphanumeric, dots, underscores only)" };
+  }
 
   // Step 1: policy check (dry-run)
   const { data: checkData } = await gvmFetch("/gvm/check", {
@@ -159,23 +193,30 @@ async function declareAndFetch(args: {
   });
 
   // Step 3: execute request through proxy
-  const reqHeaders: Record<string, string> = {
+  // Strip blocked headers (prevent agent from injecting auth/cookies)
+  const safeHeaders: Record<string, string> = {
     "X-GVM-Agent-Id": GVM_AGENT_ID,
-    ...(args.headers ?? {}),
   };
   if (GVM_TENANT_ID) {
-    reqHeaders["X-GVM-Tenant-Id"] = GVM_TENANT_ID;
+    safeHeaders["X-GVM-Tenant-Id"] = GVM_TENANT_ID;
+  }
+  if (args.headers) {
+    for (const [k, v] of Object.entries(args.headers)) {
+      if (!BLOCKED_HEADERS.has(k.toLowerCase())) {
+        safeHeaders[k] = v;
+      }
+    }
   }
   if (args.body) {
-    reqHeaders["Content-Type"] = reqHeaders["Content-Type"] ?? "application/json";
+    safeHeaders["Content-Type"] = safeHeaders["Content-Type"] ?? "application/json";
   }
 
   try {
     const resp = await fetch(args.url, {
       method: args.method,
-      headers: reqHeaders,
+      headers: safeHeaders,
       body: args.body ?? undefined,
-      // Route through proxy via fetch agent (Node 18+ respects HTTP_PROXY)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     const ct = resp.headers.get("content-type") ?? "";
@@ -459,7 +500,10 @@ server.registerTool(
     for (const p of walPaths) {
       try {
         if (!existsSync(p)) continue;
-        const lines = readFileSync(p, "utf-8").trim().split("\n");
+        const raw = readFileSync(p, "utf-8");
+        // Limit: read only last MAX_WAL_LINES lines to prevent OOM
+        const allLines = raw.trim().split("\n");
+        const lines = allLines.slice(-MAX_WAL_LINES);
         for (const line of lines) {
           try {
             const evt = JSON.parse(line) as Record<string, unknown>;
@@ -702,9 +746,14 @@ server.registerTool(
 
       const entry = registry.skills[skill];
       if (entry && !seen_rulesets.has(entry.ruleset)) {
+        // Path traversal prevention: ruleset name must be a simple filename
+        if (entry.ruleset.includes("..") || entry.ruleset.includes("/") || entry.ruleset.includes("\\")) {
+          no_ruleset.push(`${skill} (invalid ruleset path: ${entry.ruleset})`);
+          continue;
+        }
         seen_rulesets.add(entry.ruleset);
 
-        // Read the ruleset file and count rules
+        // Read the ruleset file
         try {
           const content = readFileSync(join(rulesetsDir, entry.ruleset), "utf-8");
           const ruleCount = (content.match(/\[\[rules\]\]/g) || []).length;
