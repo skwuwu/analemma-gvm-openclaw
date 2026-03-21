@@ -6,7 +6,9 @@ AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https:
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/1GOBMe6Ot3Weyaxu.svg)](https://asciinema.org/a/1GOBMe6Ot3Weyaxu)
+<p align="center">
+  <img src="demo.svg" alt="Analemma GVM — OpenClaw Governance Demo" width="860">
+</p>
 
 > Live demo: GVM proxy + OpenClaw agent (Claude Sonnet 4), maintainer's API key.
 > Before/After comparison, intent verification, ACCESS DENIED on wire transfer,
