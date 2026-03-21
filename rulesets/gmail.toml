@@ -1,0 +1,54 @@
+# GVM Ruleset: Gmail
+# Covers: himalaya skill, gmail-related integrations
+# Domains: gmail.googleapis.com, www.googleapis.com
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages"
+method = "GET"
+decision = "Allow"
+reason = "List messages (read-only)"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
+method = "GET"
+decision = "Allow"
+reason = "Read message (read-only)"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/labels"
+method = "GET"
+decision = "Allow"
+reason = "List labels (read-only)"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/threads"
+method = "GET"
+decision = "Allow"
+reason = "List threads (read-only)"
+
+# Send email — Delay for human review window
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/send"
+method = "POST"
+decision = { type = "Delay", milliseconds = 2000 }
+reason = "Send email (write — 2s delay for audit)"
+
+# Draft operations
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/drafts"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Create draft (write — delayed for audit)"
+
+# Delete — Deny (too destructive for autonomous agent)
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete email (destructive — blocked)"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*/trash"
+method = "POST"
+decision = "Deny"
+reason = "Trash email (destructive — blocked)"

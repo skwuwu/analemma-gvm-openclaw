@@ -1,0 +1,47 @@
+# GVM Ruleset: OpenAI
+# Covers: openai-image-gen, openai-whisper-api skills
+# Domains: api.openai.com
+
+# Read / inference — Allow (cost tracked via WAL)
+[[rules]]
+pattern = "api.openai.com/v1/chat/completions"
+method = "POST"
+decision = "Allow"
+reason = "Chat completion (inference — cost tracked)"
+
+[[rules]]
+pattern = "api.openai.com/v1/audio/transcriptions"
+method = "POST"
+decision = "Allow"
+reason = "Whisper transcription (inference — cost tracked)"
+
+[[rules]]
+pattern = "api.openai.com/v1/images/generations"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Image generation (cost — delayed for audit)"
+
+[[rules]]
+pattern = "api.openai.com/v1/embeddings"
+method = "POST"
+decision = "Allow"
+reason = "Embeddings (inference — cost tracked)"
+
+[[rules]]
+pattern = "api.openai.com/v1/models"
+method = "GET"
+decision = "Allow"
+reason = "List models (read-only)"
+
+# Deny destructive / admin operations
+[[rules]]
+pattern = "api.openai.com/v1/fine_tuning/*"
+method = "*"
+decision = "Deny"
+reason = "Fine-tuning (admin operation — blocked)"
+
+[[rules]]
+pattern = "api.openai.com/v1/files"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete files (destructive — blocked)"

@@ -339,6 +339,136 @@ server.registerTool(
   },
 );
 
+// ── Tool 7: gvm_load_rulesets ─────────────────────────────────────────────────
+
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve rulesets dir relative to this file (works in dist/ too)
+function findRulesetsDir(): string {
+  // Try: repo root/rulesets (dev), then relative to dist/
+  const candidates = [
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "rulesets"),
+    join(dirname(fileURLToPath(import.meta.url)), "..", "rulesets"),
+    join(process.cwd(), "rulesets"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
+  }
+  return candidates[0]; // fallback
+}
+
+interface RegistryEntry {
+  ruleset: string;
+  domains: string[];
+}
+
+interface SkillRegistry {
+  skills: Record<string, RegistryEntry>;
+  local_only_skills: string[];
+}
+
+server.registerTool(
+  "gvm_load_rulesets",
+  {
+    title: "GVM Load Rulesets",
+    description:
+      "Auto-detect installed OpenClaw skills and load matching GVM governance rulesets. " +
+      "Call this at session start to configure the proxy with skill-appropriate rules. " +
+      "Returns which rulesets were loaded and which skills have no matching ruleset.",
+    inputSchema: {
+      installed_skills: z
+        .array(z.string())
+        .describe("List of installed OpenClaw skill names (from /skills command)"),
+    },
+  },
+  async (args) => {
+    const rulesetsDir = findRulesetsDir();
+    let registry: SkillRegistry;
+
+    try {
+      const raw = readFileSync(join(rulesetsDir, "registry.json"), "utf-8");
+      registry = JSON.parse(raw) as SkillRegistry;
+    } catch {
+      return ok(
+        JSON.stringify({
+          error: "registry.json not found",
+          rulesets_dir: rulesetsDir,
+        }),
+      );
+    }
+
+    const loaded: Array<{ skill: string; ruleset: string; domains: string[] }> = [];
+    const local_only: string[] = [];
+    const no_ruleset: string[] = [];
+    const seen_rulesets = new Set<string>();
+
+    for (const skill of args.installed_skills) {
+      if (registry.local_only_skills.includes(skill)) {
+        local_only.push(skill);
+        continue;
+      }
+
+      const entry = registry.skills[skill];
+      if (entry && !seen_rulesets.has(entry.ruleset)) {
+        seen_rulesets.add(entry.ruleset);
+
+        // Read the ruleset file and count rules
+        try {
+          const content = readFileSync(join(rulesetsDir, entry.ruleset), "utf-8");
+          const ruleCount = (content.match(/\[\[rules\]\]/g) || []).length;
+          loaded.push({
+            skill,
+            ruleset: entry.ruleset,
+            domains: entry.domains,
+          });
+        } catch {
+          no_ruleset.push(`${skill} (ruleset file missing: ${entry.ruleset})`);
+        }
+      } else if (!entry) {
+        no_ruleset.push(skill);
+      }
+    }
+
+    // List available rulesets for reference
+    let available: string[] = [];
+    try {
+      available = readdirSync(rulesetsDir).filter(
+        (f) => f.endsWith(".toml") && !f.startsWith("_"),
+      );
+    } catch {
+      // ignore
+    }
+
+    return ok(
+      JSON.stringify(
+        {
+          loaded,
+          local_only_skills: local_only,
+          no_ruleset:
+            no_ruleset.length > 0
+              ? {
+                  skills: no_ruleset,
+                  action:
+                    "These skills have no matching ruleset. Their domains will use " +
+                    "Default-to-Caution (Delay) or Shadow Mode policy. " +
+                    "Review logs with `gvm audit list` and consider contributing a ruleset.",
+                }
+              : "all skills covered",
+          available_rulesets: available,
+          apply_command:
+            loaded.length > 0
+              ? `Copy matched rulesets to GVM config: cp rulesets/{${loaded.map((l) => l.ruleset).join(",")}} config/`
+              : "No rulesets to apply",
+        },
+        null,
+        2,
+      ),
+    );
+  },
+);
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function main() {

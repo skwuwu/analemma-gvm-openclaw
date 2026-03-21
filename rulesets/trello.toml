@@ -1,0 +1,54 @@
+# GVM Ruleset: Trello
+# Covers: trello skill
+# Domains: api.trello.com
+
+# Read operations — Allow
+[[rules]]
+pattern = "api.trello.com/1/members/me/boards"
+method = "GET"
+decision = "Allow"
+reason = "List boards (read-only)"
+
+[[rules]]
+pattern = "api.trello.com/1/boards/*/lists"
+method = "GET"
+decision = "Allow"
+reason = "List lists (read-only)"
+
+[[rules]]
+pattern = "api.trello.com/1/lists/*/cards"
+method = "GET"
+decision = "Allow"
+reason = "List cards (read-only)"
+
+[[rules]]
+pattern = "api.trello.com/1/cards/*"
+method = "GET"
+decision = "Allow"
+reason = "Get card (read-only)"
+
+# Write operations — Delay
+[[rules]]
+pattern = "api.trello.com/1/cards"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Create card (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.trello.com/1/cards/*/actions/comments"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Add comment (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.trello.com/1/cards/*"
+method = "PUT"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Move/update card (write — delayed for audit)"
+
+# Delete — Deny
+[[rules]]
+pattern = "api.trello.com/1/cards/*"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete card (destructive — blocked)"

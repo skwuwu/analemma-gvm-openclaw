@@ -1,0 +1,40 @@
+{
+  "_comment": "Maps OpenClaw skill names to GVM ruleset files. Used by gvm_load_rulesets for auto-detection.",
+  "skills": {
+    "github": { "ruleset": "github.toml", "domains": ["api.github.com"] },
+    "gh-issues": { "ruleset": "github.toml", "domains": ["api.github.com"] },
+    "coding-agent": { "ruleset": "github.toml", "domains": ["api.github.com"] },
+    "gmail": { "ruleset": "gmail.toml", "domains": ["gmail.googleapis.com"] },
+    "himalaya": { "ruleset": "gmail.toml", "domains": ["gmail.googleapis.com"] },
+    "slack": { "ruleset": "slack.toml", "domains": ["slack.com"] },
+    "discord": { "ruleset": "discord.toml", "domains": ["discord.com"] },
+    "notion": { "ruleset": "notion.toml", "domains": ["api.notion.com"] },
+    "trello": { "ruleset": "trello.toml", "domains": ["api.trello.com"] },
+    "openai-image-gen": { "ruleset": "openai.toml", "domains": ["api.openai.com"] },
+    "openai-whisper-api": { "ruleset": "openai.toml", "domains": ["api.openai.com"] },
+    "gemini": { "ruleset": "gemini.toml", "domains": ["generativelanguage.googleapis.com"] },
+    "spotify-player": { "ruleset": "spotify.toml", "domains": ["api.spotify.com"] },
+    "weather": { "ruleset": "weather.toml", "domains": ["wttr.in", "api.open-meteo.com"] }
+  },
+  "local_only_skills": [
+    "openai-whisper",
+    "obsidian",
+    "canvas",
+    "apple-notes",
+    "apple-reminders",
+    "bear-notes",
+    "things-mac",
+    "tmux",
+    "camsnap",
+    "gifgrep",
+    "peekaboo",
+    "sherpa-onnx-tts",
+    "session-logs",
+    "skill-creator",
+    "healthcheck",
+    "model-usage",
+    "summarize",
+    "video-frames",
+    "voice-call"
+  ]
+}

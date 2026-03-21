@@ -1,0 +1,19 @@
+# GVM Default Ruleset
+# Applied when no skill-specific ruleset matches.
+# Unknown domains → Shadow cautious mode (Delay + audit log).
+
+[[rules]]
+pattern = "localhost/*"
+method = "*"
+decision = "Allow"
+reason = "Localhost traffic (local tools, canvas, obsidian)"
+
+[[rules]]
+pattern = "127.0.0.1/*"
+method = "*"
+decision = "Allow"
+reason = "Loopback traffic"
+
+# Default-to-Caution: unknown domains get delayed and logged.
+# Review logs with `gvm audit list` to discover new domains,
+# then add explicit rules or install a skill-specific ruleset.

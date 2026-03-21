@@ -1,0 +1,15 @@
+# GVM Ruleset: Weather
+# Covers: weather skill
+# Domains: wttr.in, open-meteo.com
+
+[[rules]]
+pattern = "wttr.in/*"
+method = "GET"
+decision = "Allow"
+reason = "Weather query (public, read-only, no auth)"
+
+[[rules]]
+pattern = "api.open-meteo.com/*"
+method = "GET"
+decision = "Allow"
+reason = "Weather API (public, read-only, no auth)"

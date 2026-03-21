@@ -1,0 +1,54 @@
+# GVM Ruleset: Notion
+# Covers: notion skill
+# Domains: api.notion.com
+
+# Read operations — Allow
+[[rules]]
+pattern = "api.notion.com/v1/pages/*"
+method = "GET"
+decision = "Allow"
+reason = "Get page (read-only)"
+
+[[rules]]
+pattern = "api.notion.com/v1/blocks/*/children"
+method = "GET"
+decision = "Allow"
+reason = "Get page blocks (read-only)"
+
+[[rules]]
+pattern = "api.notion.com/v1/databases/*/query"
+method = "POST"
+decision = "Allow"
+reason = "Query database (read-only, POST is Notion convention)"
+
+[[rules]]
+pattern = "api.notion.com/v1/search"
+method = "POST"
+decision = "Allow"
+reason = "Search pages (read-only, POST is Notion convention)"
+
+# Write operations — Delay
+[[rules]]
+pattern = "api.notion.com/v1/pages"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Create page (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.notion.com/v1/pages/*"
+method = "PATCH"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Update page properties (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.notion.com/v1/blocks/*/children"
+method = "PATCH"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Append/update blocks (write — delayed for audit)"
+
+# Delete — Deny
+[[rules]]
+pattern = "api.notion.com/v1/blocks/*"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete block (destructive — blocked)"

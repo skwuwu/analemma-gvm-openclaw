@@ -1,0 +1,83 @@
+# GVM Ruleset: GitHub
+# Covers: github skill, gh-issues skill, coding-agent skill
+# Domains: api.github.com
+
+[[rules]]
+pattern = "api.github.com/repos/*/pulls"
+method = "GET"
+decision = "Allow"
+reason = "List pull requests (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/pulls/*"
+method = "GET"
+decision = "Allow"
+reason = "Get pull request details (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/issues"
+method = "GET"
+decision = "Allow"
+reason = "List issues (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/issues/*"
+method = "GET"
+decision = "Allow"
+reason = "Get issue details (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/actions/runs"
+method = "GET"
+decision = "Allow"
+reason = "List CI runs (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/commits"
+method = "GET"
+decision = "Allow"
+reason = "List commits (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/labels"
+method = "GET"
+decision = "Allow"
+reason = "List labels (read-only)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/contents/*"
+method = "GET"
+decision = "Allow"
+reason = "Read file contents (read-only)"
+
+# Write operations — Delay for audit trail
+[[rules]]
+pattern = "api.github.com/repos/*/issues"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Create issue (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/issues/*/comments"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Add comment (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/pulls"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Create pull request (write — delayed for audit)"
+
+[[rules]]
+pattern = "api.github.com/repos/*/issues/*"
+method = "PATCH"
+decision = { type = "Delay", milliseconds = 300 }
+reason = "Update issue/PR (write — delayed for audit)"
+
+# Deny dangerous operations
+[[rules]]
+pattern = "api.github.com/repos/*/git/refs/*"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete branch (destructive — blocked)"

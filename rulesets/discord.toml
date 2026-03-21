@@ -1,0 +1,42 @@
+# GVM Ruleset: Discord
+# Covers: discord skill
+# Domains: discord.com
+
+# Read operations — Allow
+[[rules]]
+pattern = "discord.com/api/*/channels/*/messages"
+method = "GET"
+decision = "Allow"
+reason = "Read messages (read-only)"
+
+[[rules]]
+pattern = "discord.com/api/*/guilds/*/channels"
+method = "GET"
+decision = "Allow"
+reason = "List channels (read-only)"
+
+[[rules]]
+pattern = "discord.com/api/*/guilds/*/members"
+method = "GET"
+decision = "Allow"
+reason = "List members (read-only)"
+
+# Write operations — Delay
+[[rules]]
+pattern = "discord.com/api/*/channels/*/messages"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Send message (write — delayed for audit)"
+
+[[rules]]
+pattern = "discord.com/api/*/channels/*/messages/*/reactions/*"
+method = "PUT"
+decision = "Allow"
+reason = "Add reaction (low-risk write)"
+
+# Destructive — Deny
+[[rules]]
+pattern = "discord.com/api/*/channels/*/messages/*"
+method = "DELETE"
+decision = "Deny"
+reason = "Delete message (destructive — blocked)"
