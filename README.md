@@ -37,36 +37,41 @@ Agent ──→ gvm_declare_intent() ──→ GVM Proxy ──→ External API
 ## Quick Start
 
 ```bash
-# 1. Install GVM proxy
-cargo binstall gvm-proxy gvm-cli
+# 1. Install proxy binary
+cargo binstall gvm-proxy
 
-# 2. Install MCP server + skills
-git clone https://github.com/skwuwu/analemma-gvm-openclaw.git ~/.openclaw/skills/gvm-governance
-cd ~/.openclaw/skills/gvm-governance/mcp-server && npm install && npm run build
-
-# 3. Start proxy
-gvm-proxy
-
-# 4. Verify it works
-curl -s http://localhost:8080/gvm/health
-# → {"status":"healthy","version":"0.1.0"}
+# 2. Install skill (prebuilt — no npm/build step)
+git clone https://github.com/skwuwu/analemma-gvm-openclaw.git \
+  ~/.openclaw/skills/gvm-governance
 ```
 
-<details>
-<summary><b>OpenClaw config</b></summary>
+Done. The MCP server **automatically launches the GVM proxy** when your agent platform starts it.
+You do not need to run `gvm-proxy` manually.
 
-The skill auto-loads from `~/.openclaw/skills/`. For MCP tools, add to config:
-```bash
-openclaw config set mcp.servers.gvm-governance.command node
-openclaw config set mcp.servers.gvm-governance.args.0 \
-  "$HOME/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"
+Add the MCP server to your agent platform:
+
+<details>
+<summary><b>OpenClaw</b></summary>
+
+The skill auto-loads from `~/.openclaw/skills/`. Add MCP server:
+```json
+// ~/.openclaw/openclaw.json
+{
+  "mcp": {
+    "servers": {
+      "gvm-governance": {
+        "command": "node",
+        "args": ["~/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"]
+      }
+    }
+  }
+}
 ```
 </details>
 
 <details>
-<summary><b>Claude Desktop / Cursor / Windsurf</b></summary>
+<summary><b>Claude Desktop</b></summary>
 
-Add to MCP config JSON:
 ```json
 {
   "mcpServers": {
@@ -78,6 +83,14 @@ Add to MCP config JSON:
 }
 ```
 </details>
+
+<details>
+<summary><b>Cursor / Windsurf</b></summary>
+
+Same JSON format as Claude Desktop in their MCP settings.
+</details>
+
+Verify: `curl -s http://localhost:8080/gvm/health` → `{"status":"healthy"}`
 
 ---
 

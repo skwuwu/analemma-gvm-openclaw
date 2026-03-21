@@ -469,9 +469,105 @@ server.registerTool(
   },
 );
 
+// ── Proxy auto-launch ────────────────────────────────────────────────────────
+
+import { spawn, execSync, type ChildProcess } from "node:child_process";
+
+let proxyChild: ChildProcess | null = null;
+
+async function ensureProxy(): Promise<void> {
+  // Check if proxy is already running
+  try {
+    const resp = await fetch(`${GVM_PROXY_URL}/gvm/health`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    if (resp.ok) {
+      process.stderr.write(`GVM proxy already running at ${GVM_PROXY_URL}\n`);
+      return;
+    }
+  } catch {
+    // Not running — need to start it
+  }
+
+  // Find gvm-proxy binary
+  let proxyBin = "gvm-proxy";
+  try {
+    execSync("gvm-proxy --version", { stdio: "ignore" });
+  } catch {
+    // Try common locations
+    const candidates = [
+      join(process.env.HOME ?? "", ".cargo", "bin", "gvm-proxy"),
+      join(process.env.USERPROFILE ?? "", ".cargo", "bin", "gvm-proxy.exe"),
+    ];
+    const found = candidates.find((p) => existsSync(p));
+    if (found) {
+      proxyBin = found;
+    } else {
+      process.stderr.write(
+        "Warning: gvm-proxy not found. Install with: cargo binstall gvm-proxy\n" +
+        "MCP tools will work when the proxy is started manually.\n",
+      );
+      return;
+    }
+  }
+
+  process.stderr.write(`Starting GVM proxy (${proxyBin})...\n`);
+
+  proxyChild = spawn(proxyBin, [], {
+    stdio: ["ignore", "ignore", "pipe"],
+    detached: false,
+  });
+
+  proxyChild.stderr?.on("data", (data: Buffer) => {
+    const line = data.toString().trim();
+    if (line.includes("listening") || line.includes("ERROR")) {
+      process.stderr.write(`[gvm-proxy] ${line}\n`);
+    }
+  });
+
+  proxyChild.on("exit", (code) => {
+    if (code !== null && code !== 0) {
+      process.stderr.write(`Warning: gvm-proxy exited with code ${code}\n`);
+    }
+    proxyChild = null;
+  });
+
+  // Wait for proxy to be ready
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      const resp = await fetch(`${GVM_PROXY_URL}/gvm/health`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (resp.ok) {
+        process.stderr.write("GVM proxy started successfully.\n");
+        return;
+      }
+    } catch {
+      // Keep waiting
+    }
+  }
+
+  process.stderr.write("Warning: GVM proxy may not have started. Check logs.\n");
+}
+
+function cleanupProxy() {
+  if (proxyChild) {
+    process.stderr.write("Stopping GVM proxy...\n");
+    proxyChild.kill();
+    proxyChild = null;
+  }
+}
+
+process.on("exit", cleanupProxy);
+process.on("SIGINT", () => { cleanupProxy(); process.exit(0); });
+process.on("SIGTERM", () => { cleanupProxy(); process.exit(0); });
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function main() {
+  await ensureProxy();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
