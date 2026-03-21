@@ -88,71 +88,51 @@ OpenClaw Gateway / Claude Desktop / Cursor
 
 ## Quick Start
 
-### 1. Install GVM
-
 ```bash
+# 1. Install GVM proxy
 cargo binstall gvm-proxy gvm-cli
+
+# 2. Install MCP server + skills (clones into ~/.openclaw/skills/)
+git clone https://github.com/skwuwu/analemma-gvm-openclaw.git ~/.openclaw/skills/gvm-governance
+cd ~/.openclaw/skills/gvm-governance/mcp-server && npm install && npm run build
+
+# 3. Start proxy
+gvm-proxy
 ```
 
-### 2. Configure MCP server
+Then add the MCP server to your agent platform:
 
-**OpenClaw** — add to `~/.openclaw/openclaw.yaml`:
+<details>
+<summary><b>OpenClaw</b></summary>
 
-```yaml
-mcpServers:
-  gvm-governance:
-    command: node
-    args: ["/path/to/analemma-gvm-openclaw/mcp-server/dist/index.js"]
-    env:
-      GVM_PROXY_URL: "http://127.0.0.1:8080"
-      GVM_AGENT_ID: "openclaw-agent"
+The skill auto-loads from `~/.openclaw/skills/`. For MCP tools, add to config:
+```bash
+openclaw config set mcp.servers.gvm-governance.command node
+openclaw config set mcp.servers.gvm-governance.args.0 "$HOME/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"
 ```
+</details>
 
-**Claude Desktop** — add to `claude_desktop_config.json`:
+<details>
+<summary><b>Claude Desktop</b></summary>
 
+Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "gvm-governance": {
       "command": "node",
-      "args": ["/path/to/analemma-gvm-openclaw/mcp-server/dist/index.js"],
-      "env": {
-        "GVM_PROXY_URL": "http://127.0.0.1:8080",
-        "GVM_AGENT_ID": "claude-desktop"
-      }
+      "args": ["~/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"]
     }
   }
 }
 ```
+</details>
 
-**Cursor / Windsurf** — same JSON format in their MCP settings.
+<details>
+<summary><b>Cursor / Windsurf</b></summary>
 
-### 3. Start GVM proxy + agent
-
-```bash
-# Terminal 1: start proxy
-gvm-proxy
-
-# Terminal 2: start agent (OpenClaw, Claude Desktop, etc.)
-# The MCP server starts automatically as a child process
-```
-
-### 4. Install OpenClaw skills (optional)
-
-```bash
-# Copy skills into managed skills directory
-cp -r skills/* ~/.openclaw/skills/
-```
-
-This teaches the OpenClaw agent how to use the MCP tools properly.
-
-## Build from source
-
-```bash
-cd mcp-server
-npm install
-npm run build
-```
+Same JSON format as Claude Desktop in their respective MCP settings.
+</details>
 
 ## Repository layout
 
