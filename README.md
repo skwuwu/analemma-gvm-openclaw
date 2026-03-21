@@ -230,6 +230,24 @@ External API latency: 50-500 ms. GVM overhead: 0.1-0.8% of total.
 
 ---
 
+## Known Limitations
+
+**Proxy bypass (without `--sandbox`):** Shadow Mode blocks requests without MCP intent, but an agent can bypass the proxy entirely via direct TCP (`socket.connect()`). Use `--sandbox` (Linux) or `--contained` (Docker) for structural enforcement. [Details →](#security-tiers)
+
+**MCP cooperation:** `gvm_fetch`/`gvm_read`/`gvm_write` require the LLM to call them. If prompt injection causes the agent to use `exec curl` instead, Shadow Mode catches it — but the agent's task fails (by design). Reliability depends on SKILL.md instruction quality.
+
+**Checkpoint is manual:** SDK provides `auto_checkpoint="ic2+"`. MCP requires the agent to call `gvm_checkpoint` explicitly. No automatic state saving before risky operations.
+
+**WAL scaling:** The proxy WAL is a single append-only file. Under high throughput (1000+ events/sec), the batch channel (4096 capacity) can fill up. Single-agent OpenClaw usage is well within limits. Multi-agent production deployments should monitor WAL size.
+
+**No hot-reload:** SRR rules and ABAC policies require proxy restart to take effect. Planned for v2.0.
+
+**OAuth2 token expiry:** Proxy does not check `expires_at` on OAuth2 credentials. Expired tokens are injected as-is; upstream returns 401. Planned for v1.1.
+
+> Full security model and known attack surface: [Security Model →](https://github.com/skwuwu/Analemma-GVM/blob/master/docs/12-security-model.md)
+
+---
+
 ## Repository layout
 
 ```
