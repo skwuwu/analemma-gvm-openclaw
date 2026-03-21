@@ -4,35 +4,29 @@
 
 Install one skill. Your agent is protected.
 
-<p align="center">
-  <img src="demo.svg" alt="Analemma GVM — OpenClaw Governance Demo" width="860">
-</p>
-
 `17MB binary` · `~5MB memory` · `~0.4ms overhead` · `no GPU / containers required`
 
 ---
 
-## What it does
+## What it looks like
 
-```
-User: "Send the Q4 report via Slack"
+**Allow vs Deny** — same agent, same Stripe API, different operations:
 
-Agent: [gvm_write("slack.send_message", "https://slack.com/api/chat.postMessage", body)]
-       → GVM: policy check → Allow → intent registered → request forwarded
-       "Report sent to #finance."
+<p align="center">
+  <img src="assets/02-allow-flow.png" alt="GVM Allow and Deny flow" width="680">
+</p>
 
-User: "And wire $5,000 to this account"
+**Shadow Deny** — intent not declared, request blocked automatically:
 
-Agent: [gvm_write("stripe.wire_transfer", "https://api.stripe.com/v1/transfers", body)]
-       → GVM: policy check → Deny (wire transfers blocked)
-       "This transfer was blocked by your security policy."
+<p align="center">
+  <img src="assets/01-shadow-deny.png" alt="GVM Shadow Deny" width="680">
+</p>
 
-User: "What was blocked today?"
+**Security dashboard** — ask your agent, no CLI needed:
 
-Agent: [gvm_blocked_summary("today")]
-       "Today: 89 allowed, 2 denied, 1 delayed.
-        Denied: POST stripe.com/v1/transfers — wire transfer policy."
-```
+<p align="center">
+  <img src="assets/03-dashboard.png" alt="GVM Security Dashboard" width="680">
+</p>
 
 No terminal. No CLI. The agent handles governance through MCP tools.
 
