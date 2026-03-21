@@ -4,6 +4,33 @@ AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https:
 
 **One MCP server, every agent platform.**
 
+## Zero Infrastructure
+
+GVM is a single static binary. No containers, no GPU, no Kubernetes.
+
+| | GVM Proxy | NemoClaw (NeMo Guardrails) | Container-based (OpenShell) |
+|---|---|---|---|
+| **Binary** | Single ~25MB | Python runtime + embedding models (~2GB) | Docker images (500MB+) |
+| **Memory** | ~5MB RSS | 512MB-2GB (embedding inference) | 256MB+ per container |
+| **GPU** | Not needed | Required (embedding/classification) | Depends |
+| **K8s** | Not needed | Recommended | Required |
+| **Startup** | <1s | 10-30s (model loading) | 5-15s (image pull + start) |
+| **Install** | `cargo binstall gvm-proxy` | pip + model downloads + config | docker pull + orchestration |
+| **Runtime deps** | None | Python, CUDA, torch | Docker daemon, kubelet |
+
+GVM fits in the same resource envelope as a reverse proxy (nginx, envoy) — because that's what it is, plus governance logic.
+
+### What you need
+
+| Component | Requirement |
+|-----------|-------------|
+| GVM proxy | Any OS, ~50MB disk, ~5MB RAM |
+| MCP server | Node.js 18+ (for JSON-RPC stdio bridge) |
+| Network | Localhost only (proxy ↔ MCP ↔ agent on same machine) |
+| GPU | Not needed. Ever. |
+| Docker | Not needed (optional `--contained` mode for production) |
+| External services | None (WAL is local file, vault is in-memory AES-256-GCM) |
+
 ## Dual-Lock Architecture
 
 ```
@@ -112,15 +139,31 @@ npm run build
 
 ```
 mcp-server/
-  src/index.ts        # MCP server — 6 governance tools over JSON-RPC stdio
+  src/index.ts        # MCP server — 7 governance tools over JSON-RPC stdio
   dist/               # Compiled output (after npm run build)
   package.json
   tsconfig.json
 skills/
   gvm-governance/
-    SKILL.md           # OpenClaw skill — agent instructions for MCP tool usage
+    SKILL.md           # OpenClaw skill — agent instructions + Shadow Mode rules
   gvm-audit/
     SKILL.md           # /gvm-audit slash command
+rulesets/
+  registry.json        # Skill-to-ruleset mapping (auto-detection)
+  _default.toml        # Fallback: localhost Allow, unknown → Default-to-Caution
+  github.toml          # api.github.com rules
+  gmail.toml           # gmail.googleapis.com rules
+  slack.toml           # slack.com/api rules
+  discord.toml         # discord.com/api rules
+  notion.toml          # api.notion.com rules
+  trello.toml          # api.trello.com rules
+  openai.toml          # api.openai.com rules
+  gemini.toml          # generativelanguage.googleapis.com rules
+  spotify.toml         # api.spotify.com rules
+  weather.toml         # wttr.in, open-meteo.com rules
+demo/
+  shadow-mode-demo.sh  # Standalone demo (curl only, no OpenClaw needed)
+  README.md
 README.md
 ```
 
@@ -136,19 +179,49 @@ MCP alone trusts the agent to call tools. A prompt-injected agent can skip them.
 Proxy alone catches URL violations but can't cross-check semantic intent.
 Together, they provide the dual-lock: cooperate if honest, enforce if compromised.
 
-## Performance: MCP vs SDK
+## Performance: MCP Path Latency
 
-### Latency model
+### Step-by-step breakdown (Allow path)
 
-| Path | SDK (direct) | MCP + Proxy | Notes |
-|------|-------------|-------------|-------|
-| Policy check | Inline (0 ms extra) | ~0.3 ms (`/gvm/check` round-trip) | MCP requires separate pre-check |
-| Allow overhead | +0.28 ms | +0.28 ms | Same proxy path |
-| Deny overhead | +3.8 ms | +3.8 ms | Same WAL fsync |
-| **Total (Allow)** | **~0.28 ms** | **~0.58 ms** | MCP adds one localhost round-trip |
-| **Total (Deny)** | **~3.8 ms** | **~4.1 ms** | Negligible difference |
+```
+Agent decides to call Stripe API
+  │
+  ├─ 1. gvm_declare_intent (MCP tool call)
+  │    ├─ stdio JSON-RPC serialize/deserialize    ~0.05 ms
+  │    ├─ POST /gvm/check (dry-run policy check)  ~0.15 ms  localhost HTTP
+  │    └─ POST /gvm/intent (register intent)      ~0.15 ms  localhost HTTP + mutex + Vec push
+  │    subtotal:                                   ~0.35 ms
+  │
+  ├─ 2. HTTP request through proxy
+  │    ├─ Shadow verify (IntentStore.verify)       ~0.01 ms  in-memory lookup, no I/O
+  │    ├─ SRR + ABAC policy evaluation             <0.01 ms  compiled regex, sub-μs
+  │    ├─ API key injection                         <0.01 ms  header insert
+  │    └─ Forward to upstream                      50-500 ms network-dependent
+  │    subtotal:                                   ~0.03 ms  GVM overhead
+  │
+  Total GVM overhead (Allow):                      ~0.4 ms
+  External API latency:                            50-500 ms
+  GVM as % of total:                               0.1-0.8%
+```
 
-SDK evaluates policy inline during the HTTP forward (1 round-trip). MCP requires a separate `gvm_policy_check` call before the actual request (2 round-trips). The extra ~0.3 ms is a localhost HTTP call — negligible compared to external API latency (50-500 ms).
+### Deny path (WAL-durable)
+
+```
+  gvm_declare_intent                               ~0.35 ms  (same as Allow)
+  Shadow verify + SRR → Deny decision              ~0.01 ms
+  WAL fsync (durable audit record before 403)      ~3.8 ms   intentional — audit first
+  Total:                                           ~4.2 ms
+```
+
+The 3.8 ms Deny overhead is a deliberate design choice — the denial record must be durable before the 403 response. Cilium/Envoy use fire-and-forget logging; GVM blocks until the audit entry is fsynced. For AI agent actions (wire transfers, credential access), 3.8 ms of audit durability is worth it.
+
+### Comparison
+
+| Path | SDK (Python `@ic`) | MCP + Proxy | Difference |
+|------|-------------------|-------------|------------|
+| **Allow** | ~0.28 ms | ~0.4 ms | +0.12 ms (intent registration) |
+| **Deny** | ~3.8 ms | ~4.2 ms | +0.4 ms (intent + check) |
+| **Shadow Deny** (no intent) | N/A | ~0.01 ms + 403 | Instant rejection |
 
 Benchmark source: [Daytona sandbox measurements](https://github.com/skwuwu/analemma-gvm-daytona/blob/master/bench/results.md) (N=50, real cloud environment).
 
