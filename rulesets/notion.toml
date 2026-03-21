@@ -2,7 +2,7 @@
 # Covers: notion skill
 # Domains: api.notion.com
 
-# Read operations — Allow
+# Read operations -- Allow
 [[rules]]
 pattern = "api.notion.com/v1/pages/*"
 method = "GET"
@@ -27,28 +27,28 @@ method = "POST"
 decision = "Allow"
 reason = "Search pages (read-only, POST is Notion convention)"
 
-# Write operations — Delay
+# Write operations -- Delay
 [[rules]]
 pattern = "api.notion.com/v1/pages"
 method = "POST"
 decision = { type = "Delay", milliseconds = 500 }
-reason = "Create page (write — delayed for audit)"
+reason = "Create page (write -- delayed for audit)"
 
 [[rules]]
 pattern = "api.notion.com/v1/pages/*"
 method = "PATCH"
 decision = { type = "Delay", milliseconds = 500 }
-reason = "Update page properties (write — delayed for audit)"
+reason = "Update page properties (write -- delayed for audit)"
 
 [[rules]]
 pattern = "api.notion.com/v1/blocks/*/children"
 method = "PATCH"
 decision = { type = "Delay", milliseconds = 500 }
-reason = "Append/update blocks (write — delayed for audit)"
+reason = "Append/update blocks (write -- delayed for audit)"
 
-# Delete — Deny
+# Delete -- Deny
 [[rules]]
 pattern = "api.notion.com/v1/blocks/*"
 method = "DELETE"
 decision = "Deny"
-reason = "Delete block (destructive — blocked)"
+reason = "Delete block (destructive -- blocked)"

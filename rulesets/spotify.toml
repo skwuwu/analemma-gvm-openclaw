@@ -24,10 +24,10 @@ reason = "List devices (read-only)"
 pattern = "api.spotify.com/v1/me/player/*"
 method = "PUT"
 decision = "Allow"
-reason = "Playback control (play/pause/skip — low risk)"
+reason = "Playback control (play/pause/skip -- low risk)"
 
 [[rules]]
 pattern = "api.spotify.com/v1/me/player/*"
 method = "POST"
 decision = "Allow"
-reason = "Playback control (next/previous — low risk)"
+reason = "Playback control (next/previous -- low risk)"

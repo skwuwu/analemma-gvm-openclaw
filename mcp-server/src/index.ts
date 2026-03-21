@@ -692,14 +692,29 @@ function findRulesetsDir(): string {
 }
 
 function findConfigDir(): string {
+  // GVM_CONFIG_DIR explicitly set, or derive from GVM_CONFIG_PATH
+  if (process.env.GVM_CONFIG_DIR && existsSync(process.env.GVM_CONFIG_DIR)) {
+    return process.env.GVM_CONFIG_DIR;
+  }
+  const configPath = process.env.GVM_CONFIG_PATH;
+  if (configPath && existsSync(configPath)) {
+    return dirname(configPath);
+  }
   const candidates = [
     join(process.cwd(), "config"),
     join(process.env.HOME ?? "", ".gvm", "config"),
+    join(process.env.USERPROFILE ?? "", ".gvm", "config"),
   ];
   for (const dir of candidates) {
     if (existsSync(dir)) return dir;
   }
-  return candidates[0];
+  // Create default config dir if nothing exists
+  const defaultDir = candidates[0];
+  try {
+    const { mkdirSync } = require("node:fs");
+    mkdirSync(defaultDir, { recursive: true });
+  } catch { /* ignore */ }
+  return defaultDir;
 }
 
 server.registerTool(
@@ -808,7 +823,11 @@ server.registerTool(
           continue;
         }
 
-        writeFileSync(srrPath, existing + marker + content + "\n", "utf-8");
+        // Match existing file's line endings (CRLF on Windows)
+        const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+        const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\n/g, eol);
+        const normalizedMarker = marker.replace(/\n/g, eol);
+        writeFileSync(srrPath, existing + normalizedMarker + normalizedContent + eol, "utf-8");
         applied.push({
           name,
           domains: [...domains].join(", "),
@@ -903,8 +922,9 @@ async function ensureProxy(): Promise<void> {
     detached: false,
     env: {
       ...process.env,
-      // MCP server always activates Shadow Mode — intent verification required
       GVM_SHADOW_MODE: process.env.GVM_SHADOW_MODE ?? "strict",
+      // Share config dir with MCP server for ruleset management
+      GVM_CONFIG_DIR: process.env.GVM_CONFIG_DIR ?? (configPath ? dirname(configPath) : ""),
     },
   });
 

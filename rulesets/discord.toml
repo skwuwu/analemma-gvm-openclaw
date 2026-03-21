@@ -2,7 +2,7 @@
 # Covers: discord skill
 # Domains: discord.com
 
-# Read operations — Allow
+# Read operations -- Allow
 [[rules]]
 pattern = "discord.com/api/*/channels/*/messages"
 method = "GET"
@@ -21,12 +21,12 @@ method = "GET"
 decision = "Allow"
 reason = "List members (read-only)"
 
-# Write operations — Delay
+# Write operations -- Delay
 [[rules]]
 pattern = "discord.com/api/*/channels/*/messages"
 method = "POST"
 decision = { type = "Delay", milliseconds = 500 }
-reason = "Send message (write — delayed for audit)"
+reason = "Send message (write -- delayed for audit)"
 
 [[rules]]
 pattern = "discord.com/api/*/channels/*/messages/*/reactions/*"
@@ -34,9 +34,9 @@ method = "PUT"
 decision = "Allow"
 reason = "Add reaction (low-risk write)"
 
-# Destructive — Deny
+# Destructive -- Deny
 [[rules]]
 pattern = "discord.com/api/*/channels/*/messages/*"
 method = "DELETE"
 decision = "Deny"
-reason = "Delete message (destructive — blocked)"
+reason = "Delete message (destructive -- blocked)"

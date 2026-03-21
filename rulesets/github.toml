@@ -50,34 +50,34 @@ method = "GET"
 decision = "Allow"
 reason = "Read file contents (read-only)"
 
-# Write operations — Delay for audit trail
+# Write operations -- Delay for audit trail
 [[rules]]
 pattern = "api.github.com/repos/*/issues"
 method = "POST"
 decision = { type = "Delay", milliseconds = 300 }
-reason = "Create issue (write — delayed for audit)"
+reason = "Create issue (write -- delayed for audit)"
 
 [[rules]]
 pattern = "api.github.com/repos/*/issues/*/comments"
 method = "POST"
 decision = { type = "Delay", milliseconds = 300 }
-reason = "Add comment (write — delayed for audit)"
+reason = "Add comment (write -- delayed for audit)"
 
 [[rules]]
 pattern = "api.github.com/repos/*/pulls"
 method = "POST"
 decision = { type = "Delay", milliseconds = 300 }
-reason = "Create pull request (write — delayed for audit)"
+reason = "Create pull request (write -- delayed for audit)"
 
 [[rules]]
 pattern = "api.github.com/repos/*/issues/*"
 method = "PATCH"
 decision = { type = "Delay", milliseconds = 300 }
-reason = "Update issue/PR (write — delayed for audit)"
+reason = "Update issue/PR (write -- delayed for audit)"
 
 # Deny dangerous operations
 [[rules]]
 pattern = "api.github.com/repos/*/git/refs/*"
 method = "DELETE"
 decision = "Deny"
-reason = "Delete branch (destructive — blocked)"
+reason = "Delete branch (destructive -- blocked)"
