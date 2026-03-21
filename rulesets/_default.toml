@@ -5,13 +5,13 @@
 [[rules]]
 pattern = "localhost/*"
 method = "*"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Localhost traffic (local tools, canvas, obsidian)"
 
 [[rules]]
 pattern = "127.0.0.1/*"
 method = "*"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Loopback traffic"
 
 # Default-to-Caution: unknown domains get delayed and logged.

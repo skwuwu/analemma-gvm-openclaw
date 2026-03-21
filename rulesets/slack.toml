@@ -6,37 +6,37 @@
 [[rules]]
 pattern = "slack.com/api/conversations.history"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Read channel messages (read-only)"
 
 [[rules]]
 pattern = "slack.com/api/conversations.list"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List channels (read-only)"
 
 [[rules]]
 pattern = "slack.com/api/users.info"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Get user info (read-only)"
 
 [[rules]]
 pattern = "slack.com/api/emoji.list"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List emoji (read-only)"
 
 [[rules]]
 pattern = "slack.com/api/reactions.get"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Get reactions (read-only)"
 
 [[rules]]
 pattern = "slack.com/api/pins.list"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List pins (read-only)"
 
 # Write operations -- Delay
@@ -49,7 +49,7 @@ reason = "Send message (write -- delayed for audit)"
 [[rules]]
 pattern = "slack.com/api/reactions.add"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Add reaction (low-risk write)"
 
 [[rules]]
@@ -62,8 +62,7 @@ reason = "Pin message (write -- delayed for audit)"
 [[rules]]
 pattern = "slack.com/api/chat.delete"
 method = "POST"
-decision = "Deny"
-reason = "Delete message (destructive -- blocked)"
+decision = { type = "Deny", reason = "Delete message (destructive -- blocked)" }
 
 [[rules]]
 pattern = "slack.com/api/chat.update"

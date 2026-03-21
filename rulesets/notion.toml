@@ -6,25 +6,27 @@
 [[rules]]
 pattern = "api.notion.com/v1/pages/*"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Get page (read-only)"
 
 [[rules]]
-pattern = "api.notion.com/v1/blocks/*/children"
+pattern = "api.notion.com"
+path_regex = "^/v1/blocks/[^/]+/children$"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Get page blocks (read-only)"
 
 [[rules]]
-pattern = "api.notion.com/v1/databases/*/query"
+pattern = "api.notion.com"
+path_regex = "^/v1/databases/[^/]+/query$"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Query database (read-only, POST is Notion convention)"
 
 [[rules]]
 pattern = "api.notion.com/v1/search"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Search pages (read-only, POST is Notion convention)"
 
 # Write operations -- Delay
@@ -41,7 +43,8 @@ decision = { type = "Delay", milliseconds = 500 }
 reason = "Update page properties (write -- delayed for audit)"
 
 [[rules]]
-pattern = "api.notion.com/v1/blocks/*/children"
+pattern = "api.notion.com"
+path_regex = "^/v1/blocks/[^/]+/children$"
 method = "PATCH"
 decision = { type = "Delay", milliseconds = 500 }
 reason = "Append/update blocks (write -- delayed for audit)"
@@ -50,5 +53,4 @@ reason = "Append/update blocks (write -- delayed for audit)"
 [[rules]]
 pattern = "api.notion.com/v1/blocks/*"
 method = "DELETE"
-decision = "Deny"
-reason = "Delete block (destructive -- blocked)"
+decision = { type = "Deny", reason = "Delete block (destructive -- blocked)" }

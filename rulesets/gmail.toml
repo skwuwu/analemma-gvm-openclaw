@@ -5,25 +5,25 @@
 [[rules]]
 pattern = "gmail.googleapis.com/gmail/v1/users/me/messages"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List messages (read-only)"
 
 [[rules]]
 pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Read message (read-only)"
 
 [[rules]]
 pattern = "gmail.googleapis.com/gmail/v1/users/me/labels"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List labels (read-only)"
 
 [[rules]]
 pattern = "gmail.googleapis.com/gmail/v1/users/me/threads"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List threads (read-only)"
 
 # Send email -- Delay for human review window
@@ -44,11 +44,10 @@ reason = "Create draft (write -- delayed for audit)"
 [[rules]]
 pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
 method = "DELETE"
-decision = "Deny"
-reason = "Delete email (destructive -- blocked)"
+decision = { type = "Deny", reason = "Delete email (destructive -- blocked)" }
 
 [[rules]]
-pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*/trash"
+pattern = "gmail.googleapis.com"
+path_regex = "^/gmail/v1/users/me/messages/[^/]+/trash$"
 method = "POST"
-decision = "Deny"
-reason = "Trash email (destructive -- blocked)"
+decision = { type = "Deny", reason = "Trash email (destructive -- blocked)" }

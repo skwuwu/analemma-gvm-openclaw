@@ -5,23 +5,23 @@
 [[rules]]
 pattern = "generativelanguage.googleapis.com/v1beta/models/*"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Gemini inference (cost tracked via WAL)"
 
 [[rules]]
 pattern = "generativelanguage.googleapis.com/v1beta/models"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List models (read-only)"
 
 [[rules]]
 pattern = "generativelanguage.googleapis.com/v1/models/*"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Gemini inference (cost tracked via WAL)"
 
 [[rules]]
 pattern = "generativelanguage.googleapis.com/v1/models"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List models (read-only)"

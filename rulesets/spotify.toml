@@ -5,29 +5,29 @@
 [[rules]]
 pattern = "api.spotify.com/v1/search"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Search tracks/albums (read-only)"
 
 [[rules]]
 pattern = "api.spotify.com/v1/me/player"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Get playback state (read-only)"
 
 [[rules]]
 pattern = "api.spotify.com/v1/me/player/devices"
 method = "GET"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "List devices (read-only)"
 
 [[rules]]
 pattern = "api.spotify.com/v1/me/player/*"
 method = "PUT"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Playback control (play/pause/skip -- low risk)"
 
 [[rules]]
 pattern = "api.spotify.com/v1/me/player/*"
 method = "POST"
-decision = "Allow"
+decision = { type = "Allow" }
 reason = "Playback control (next/previous -- low risk)"
