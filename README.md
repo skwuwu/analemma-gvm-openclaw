@@ -1,18 +1,31 @@
-# Analemma GVM — OpenClaw + MCP Server
+# Analemma GVM
 
-AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https://claude.ai), Cursor, Windsurf, and any MCP-compatible client.
+**Prevent autonomous AI agents from calling unintended APIs.**
 
-**One MCP server, every agent platform.**
+Analemma GVM is a governance proxy for AI agents.
+Works with OpenClaw, Claude Desktop, Cursor, Windsurf, and any MCP client.
 
-## Demo
+One MCP server. Every agent platform.
 
 <p align="center">
   <img src="demo.svg" alt="Analemma GVM — OpenClaw Governance Demo" width="860">
 </p>
 
-> Live demo: GVM proxy + OpenClaw agent (Claude Sonnet 4), maintainer's API key.
-> Before/After comparison, intent verification, ACCESS DENIED on wire transfer,
-> OpenClaw agent receives Deny verdict, measured latency benchmark (N=20).
+**Key properties:**
+`17MB binary` · `~5MB memory` · `~0.4ms overhead` · `no GPU / containers required`
+
+### What Shadow Mode enforces
+
+With Shadow Mode `strict`, the proxy **rejects any HTTP request without a prior MCP intent declaration.** This makes all three governance features mandatory — not cooperative:
+
+| Capability | Without Shadow | With Shadow `strict` |
+|-----------|---------------|---------------------|
+| **API misuse blocking** | Proxy enforces (always) | Proxy enforces (always) |
+| **Intent forgery detection** | Agent can skip `declare_intent` | `declare_intent` required — proxy cross-checks intent vs URL |
+| **Checkpoint / rollback** | Agent can skip | Agent learns: skip = blocked = failed task |
+
+> MCP is the conversation. Proxy is the enforcement.
+> Declare intent = fast path. Skip intent = blocked.
 
 ## Zero Infrastructure
 
