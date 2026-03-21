@@ -10,7 +10,7 @@ GVM is a single static binary. No containers, no GPU, no Kubernetes.
 
 | | GVM Proxy | NemoClaw (NeMo Guardrails) | Container-based (OpenShell) |
 |---|---|---|---|
-| **Binary** | Single ~25MB | Python runtime + embedding models (~2GB) | Docker images (500MB+) |
+| **Binary** | Single **17MB** (measured, release build) | Python runtime + embedding models (~2GB) | Docker images (500MB+) |
 | **Memory** | ~5MB RSS | 512MB-2GB (embedding inference) | 256MB+ per container |
 | **GPU** | Not needed | Required (embedding/classification) | Depends |
 | **K8s** | Not needed | Recommended | Required |
