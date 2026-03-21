@@ -1,0 +1,25 @@
+{
+  "name": "@analemma/gvm-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for Analemma GVM — AI agent governance via Model Context Protocol",
+  "type": "module",
+  "bin": {
+    "gvm-mcp-server": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["mcp", "gvm", "governance", "ai-agent", "security", "openclaw"],
+  "author": "skwuwu",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}

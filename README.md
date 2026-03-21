@@ -1,105 +1,150 @@
-# Analemma GVM — OpenClaw Skills
+# Analemma GVM — OpenClaw + MCP Server
 
-[OpenClaw](https://openclaw.ai) skills for AI agent governance via [Analemma GVM](https://github.com/skwuwu/Analemma-GVM).
+AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https://claude.ai), Cursor, Windsurf, and any MCP-compatible client.
 
-## What these skills do
+**One MCP server, every agent platform.**
 
-| Skill | Type | Description |
-|-------|------|-------------|
-| `gvm-governance` | Auto-loaded | Teaches the agent how to enforce API policies, manage SRR rules, handle credentials, and use checkpoint/rollback |
-| `gvm-audit` | `/gvm-audit` | Slash command to verify WAL integrity, investigate denials, and export compliance reports |
+## Dual-Lock Architecture
 
-## Install
-
-### Option 1: Clone into managed skills
-
-```bash
-git clone https://github.com/skwuwu/analemma-gvm-openclaw.git \
-  ~/.openclaw/skills/gvm
+```
+OpenClaw Gateway / Claude Desktop / Cursor
+    |
+    ├─ gmail MCP server
+    ├─ github MCP server
+    ├─ gvm-governance MCP server  ← this package
+    |   |
+    |   ├─ gvm_policy_check(method, url)       → Allow/Delay/Deny
+    |   ├─ gvm_declare_intent(operation, ...)   → register intent for forgery detection
+    |   ├─ gvm_request_secret(host)             → confirm credential injection
+    |   ├─ gvm_checkpoint(label, step)          → save state for rollback
+    |   ├─ gvm_rollback(step)                   → restore to checkpoint
+    |   └─ gvm_audit_log(last_n)                → view governance decisions
+    |
+    └─ [HTTP_PROXY=localhost:8080] ← GVM proxy (enforcement layer)
 ```
 
-### Option 2: ClawHub (when published)
+**Layer 1 — MCP tools (cooperative):** Agent calls `gvm_declare_intent` before API requests. The proxy cross-checks declared intent against actual HTTP target. This enables forgery detection without SDK integration.
 
-```bash
-clawhub install gvm-governance
-clawhub install gvm-audit
-```
+**Layer 2 — HTTP proxy (forced):** All outbound HTTP goes through the GVM proxy regardless of whether the agent uses MCP tools. Undeclared requests trigger Default-to-Caution (Delay). Denied URLs return 403. The agent never holds API keys.
 
-### Option 3: Workspace-local
+**Result:** If the agent cooperates via MCP → smooth operation with full audit trail. If the agent skips MCP (prompt injection, bugs) → the proxy catches it anyway.
 
-```bash
-# Inside your agent workspace
-mkdir -p skills
-cp -r path/to/analemma-gvm-openclaw/skills/* skills/
-```
+## MCP Tools
 
-## Prerequisites
+| Tool | Purpose | When to use |
+|------|---------|-------------|
+| `gvm_policy_check` | Dry-run policy evaluation | Before any external API call |
+| `gvm_declare_intent` | Register operation for forgery detection | After policy check passes |
+| `gvm_request_secret` | Confirm credential auto-injection | When calling authenticated APIs |
+| `gvm_checkpoint` | Save agent state | Before risky operations (IC-2+) |
+| `gvm_rollback` | Restore to checkpoint | After a Deny, instead of restarting |
+| `gvm_audit_log` | View recent decisions | Investigating governance events |
 
-GVM proxy and CLI must be installed:
+## Quick Start
+
+### 1. Install GVM
 
 ```bash
 cargo binstall gvm-proxy gvm-cli
 ```
 
-Or build from source:
+### 2. Configure MCP server
 
-```bash
-git clone https://github.com/skwuwu/Analemma-GVM.git && cd Analemma-GVM
-cargo install --path .
+**OpenClaw** — add to `~/.openclaw/openclaw.yaml`:
+
+```yaml
+mcpServers:
+  gvm-governance:
+    command: node
+    args: ["/path/to/analemma-gvm-openclaw/mcp-server/dist/index.js"]
+    env:
+      GVM_PROXY_URL: "http://127.0.0.1:8080"
+      GVM_AGENT_ID: "openclaw-agent"
 ```
 
-## How it works
+**Claude Desktop** — add to `claude_desktop_config.json`:
 
-```
- OpenClaw Agent          GVM Proxy (:8080)          External API
- ┌──────────┐    HTTP     ┌──────────────────┐  HTTPS  ┌──────────┐
- │ Any task  │───PROXY───>│ Policy + audit   │────────>│ Stripe   │
- │ via chat  │            │ Key injection    │         │ Gmail    │
- └──────────┘             └──────────────────┘         └──────────┘
-```
-
-1. OpenClaw agent receives a task (e.g., "send the Q4 report via email")
-2. Agent calls external APIs through `HTTP_PROXY=http://localhost:8080`
-3. GVM proxy evaluates SRR rules + ABAC policies → Allow / Delay / Deny
-4. Allowed requests get credentials injected; denied requests return 403
-5. Every decision is WAL-recorded with SHA-256 Merkle chaining
-
-The agent never holds API keys. The proxy holds them and injects post-enforcement.
-
-## Configuration
-
-Configure in `~/.openclaw/openclaw.json`:
-
-```json5
+```json
 {
-  "skills": {
-    "entries": {
-      "gvm_governance": {
-        "enabled": true
-      },
-      "gvm_audit": {
-        "enabled": true
+  "mcpServers": {
+    "gvm-governance": {
+      "command": "node",
+      "args": ["/path/to/analemma-gvm-openclaw/mcp-server/dist/index.js"],
+      "env": {
+        "GVM_PROXY_URL": "http://127.0.0.1:8080",
+        "GVM_AGENT_ID": "claude-desktop"
       }
     }
   }
 }
 ```
 
-## Why GVM for OpenClaw?
+**Cursor / Windsurf** — same JSON format in their MCP settings.
 
-OpenClaw gives agents the ability to **act** — run commands, call APIs, manage files.
-GVM ensures those actions are **governed**:
+### 3. Start GVM proxy + agent
 
-- **Credential isolation**: Agent never sees API keys (proxy injects them)
-- **Graduated enforcement**: Allow / Delay / Deny — not binary
-- **Forgery detection**: Agent says "read" but does "transfer"? `max_strict` catches the lie
-- **Tamper-proof audit**: Merkle-chained WAL — every decision is cryptographically linked
-- **Checkpoint rollback**: Denied at step 3 of 4? Resume from checkpoint, don't restart
+```bash
+# Terminal 1: start proxy
+gvm-proxy
 
-Without GVM, an OpenClaw agent with API access is one prompt injection away from
-sending wire transfers with your Stripe key. With GVM, the agent can't even see the key,
-wire transfers are structurally blocked, and the attempt is permanently recorded.
+# Terminal 2: start agent (OpenClaw, Claude Desktop, etc.)
+# The MCP server starts automatically as a child process
+```
+
+### 4. Install OpenClaw skills (optional)
+
+```bash
+# Copy skills into managed skills directory
+cp -r skills/* ~/.openclaw/skills/
+```
+
+This teaches the OpenClaw agent how to use the MCP tools properly.
+
+## Build from source
+
+```bash
+cd mcp-server
+npm install
+npm run build
+```
+
+## Repository layout
+
+```
+mcp-server/
+  src/index.ts        # MCP server — 6 governance tools over JSON-RPC stdio
+  dist/               # Compiled output (after npm run build)
+  package.json
+  tsconfig.json
+skills/
+  gvm-governance/
+    SKILL.md           # OpenClaw skill — agent instructions for MCP tool usage
+  gvm-audit/
+    SKILL.md           # /gvm-audit slash command
+README.md
+```
+
+## Why MCP + Proxy (not just one)
+
+| Approach | Cooperative? | Forced? | Forgery detection? |
+|----------|-------------|---------|-------------------|
+| MCP only | Yes | No — agent can skip tools | No |
+| Proxy only | No | Yes — all HTTP intercepted | No — no semantic layer |
+| **MCP + Proxy** | **Yes** | **Yes** | **Yes — cross-layer** |
+
+MCP alone trusts the agent to call tools. A prompt-injected agent can skip them.
+Proxy alone catches URL violations but can't cross-check semantic intent.
+Together, they provide the dual-lock: cooperate if honest, enforce if compromised.
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GVM_PROXY_URL` | `http://127.0.0.1:8080` | GVM proxy base URL |
+| `GVM_AGENT_ID` | `mcp-agent` | Agent identity for WAL records |
+| `GVM_TENANT_ID` | — | Tenant identity (multi-tenant) |
 
 ## Core repository
 
 Source and docs: [skwuwu/Analemma-GVM](https://github.com/skwuwu/Analemma-GVM)
+Docker image: `ghcr.io/skwuwu/analemma-gvm:latest`

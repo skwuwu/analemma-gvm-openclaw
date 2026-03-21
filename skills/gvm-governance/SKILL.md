@@ -27,12 +27,30 @@ GVM is a security kernel for AI agent I/O. It governs what agents **do**, not wh
 All outbound HTTP requests pass through the GVM proxy, which enforces policies, injects credentials,
 and writes an immutable audit log (WAL).
 
+## MCP Tools Available
+
+When the GVM MCP server is connected, use these tools for ALL external API interactions:
+
+1. **gvm_policy_check(method, url)** — Check if a request would be allowed BEFORE making it.
+2. **gvm_declare_intent(operation, method, url)** — Declare your intent for cross-layer forgery detection.
+3. **gvm_request_secret(host)** — Confirm credential injection (never set auth headers yourself).
+4. **gvm_checkpoint(label, step)** — Save state before risky operations.
+5. **gvm_rollback(step)** — Restore to checkpoint after a Deny.
+6. **gvm_audit_log()** — View recent governance decisions.
+
+**Mandatory workflow for external API calls:**
+1. Call `gvm_policy_check` to verify the request is allowed.
+2. If allowed, call `gvm_declare_intent` to register your operation.
+3. Make the HTTP request through the proxy (`HTTP_PROXY=http://localhost:8080`).
+4. Never set Authorization headers — the proxy injects credentials automatically.
+
 ## Core rules
 
 - Never bypass the proxy. All external API calls must go through `HTTP_PROXY=http://localhost:8080`.
 - Never store API keys in agent env. Keys live in `config/secrets.toml` — the proxy injects them post-enforcement.
 - Every governance decision (Allow/Delay/Deny) is recorded in the WAL with SHA-256 Merkle chaining.
 - If proxy is down, fail closed — no direct HTTPS connections to external APIs.
+- Always call `gvm_declare_intent` before external requests. Undeclared requests trigger Default-to-Caution (Delay).
 
 ## Architecture (3 layers)
 
