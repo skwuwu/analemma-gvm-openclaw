@@ -202,6 +202,33 @@ Agent (OpenClaw / Claude / Cursor)
 Without `--sandbox`, the proxy governs traffic that passes through it, but an agent could bypass by making direct HTTPS connections.
 </details>
 
+### Security tiers — pick your level
+
+| Tier | Command | What's enforced | Bypass possible? |
+|------|---------|-----------------|-----------------|
+| **1. Shadow only** | `gvm-proxy` (MCP auto-starts) | Intent required before each request. No intent → blocked. | Yes — agent can skip proxy via direct TCP |
+| **2. Shadow + sandbox** | `gvm run --sandbox my_agent.py` | All of Tier 1 + kernel-level network isolation. Agent's only network path is the proxy veth. | No — seccomp kills `AF_NETLINK`, TC filter drops non-proxy packets |
+| **3. Shadow + Docker** | `gvm run --contained my_agent.py` | All of Tier 1 + Docker network isolation. | Depends on Docker runtime |
+
+```bash
+# Tier 1: Any OS — Shadow Mode only (MCP auto-launches proxy)
+cargo binstall gvm-proxy
+git clone ... ~/.openclaw/skills/gvm-governance
+# → agent platform starts MCP server → proxy auto-starts with shadow=strict
+
+# Tier 2: Linux production — Shadow + kernel sandbox (recommended)
+gvm run --sandbox my_agent.py
+# → namespace + seccomp + eBPF + shadow=strict
+# → agent cannot bypass proxy even with socket.connect()
+
+# Tier 3: macOS/Windows production — Shadow + Docker
+gvm run --contained my_agent.py
+# → Docker internal network + shadow=strict
+```
+
+**Tier 1** is enough for cooperative agents (OpenClaw, Claude Desktop).
+**Tier 2** is for production where prompt injection is a real threat — the agent physically cannot reach external APIs without going through the proxy.
+
 <details>
 <summary><b>SDK vs MCP comparison</b></summary>
 
