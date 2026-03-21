@@ -4,6 +4,13 @@ AI agent governance for [OpenClaw](https://openclaw.ai), [Claude Desktop](https:
 
 **One MCP server, every agent platform.**
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/J0baK30qyHuhwvTU.svg)](https://asciinema.org/a/J0baK30qyHuhwvTU)
+
+> Recorded with a live GVM proxy + OpenClaw agent (Claude Sonnet 4) using the maintainer's personal API key.
+> Intent registration, policy check (Allow/Deny), and agent governance query — all real, no mock.
+
 ## Zero Infrastructure
 
 GVM is a single static binary. No containers, no GPU, no Kubernetes.

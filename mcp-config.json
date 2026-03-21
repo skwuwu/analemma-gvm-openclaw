@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gvm-governance": {
+      "command": "node",
+      "args": ["C:\\tmp\\analemma-gvm-openclaw\\mcp-server\\dist\\index.js"],
+      "env": {
+        "GVM_PROXY_URL": "http://127.0.0.1:8080",
+        "GVM_AGENT_ID": "openclaw-agent"
+      }
+    }
+  }
+}
