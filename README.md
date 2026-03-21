@@ -2,104 +2,37 @@
 
 **Prevent autonomous AI agents from calling unintended APIs.**
 
-Analemma GVM is a governance proxy for AI agents.
-Works with OpenClaw, Claude Desktop, Cursor, Windsurf, and any MCP client.
-
-One MCP server. Every agent platform.
+Drop-in governance for OpenClaw and any MCP client.
 
 <p align="center">
   <img src="demo.svg" alt="Analemma GVM — OpenClaw Governance Demo" width="860">
 </p>
 
-**Key properties:**
 `17MB binary` · `~5MB memory` · `~0.4ms overhead` · `no GPU / containers required`
 
-### What Shadow Mode enforces
+---
 
-With Shadow Mode `strict`, the proxy **rejects any HTTP request without a prior MCP intent declaration.** This makes all three governance features mandatory — not cooperative:
+## Why this exists
+
+Prompt-injected agents skip governance tools.
+Shadow Mode prevents this by rejecting any request that has no prior MCP intent declaration.
+
+```
+Agent ──→ gvm_declare_intent() ──→ GVM Proxy ──→ External API
+                                      │
+                              no intent? → BLOCKED
+```
 
 | Capability | Without Shadow | With Shadow `strict` |
 |-----------|---------------|---------------------|
 | **API misuse blocking** | Proxy enforces (always) | Proxy enforces (always) |
-| **Intent forgery detection** | Agent can skip `declare_intent` | `declare_intent` required — proxy cross-checks intent vs URL |
-| **Checkpoint / rollback** | Agent can skip | Agent learns: skip = blocked = failed task |
+| **Intent forgery detection** | Agent can skip | **Required** — proxy cross-checks intent vs URL |
+| **Checkpoint / rollback** | Agent can skip | Skip = blocked = failed task |
 
 > MCP is the conversation. Proxy is the enforcement.
 > Declare intent = fast path. Skip intent = blocked.
 
-## Zero Infrastructure
-
-GVM is a single static binary. No containers, no GPU, no Kubernetes.
-
-| | GVM Proxy | NemoClaw (NeMo Guardrails) | Container-based (OpenShell) |
-|---|---|---|---|
-| **Binary** | Single **17MB** (measured, release build) | Python runtime + embedding models (~2GB) | Docker images (500MB+) |
-| **Memory** | ~5MB RSS | 512MB-2GB (embedding inference) | 256MB+ per container |
-| **GPU** | Not needed | Required (embedding/classification) | Depends |
-| **K8s** | Not needed | Recommended | Required |
-| **Startup** | <1s | 10-30s (model loading) | 5-15s (image pull + start) |
-| **Install** | `cargo binstall gvm-proxy` | pip + model downloads + config | docker pull + orchestration |
-| **Runtime deps** | None | Python, CUDA, torch | Docker daemon, kubelet |
-
-GVM fits in the same resource envelope as a reverse proxy (nginx, envoy) — because that's what it is, plus governance logic.
-
-### What you need
-
-| Component | Requirement |
-|-----------|-------------|
-| GVM proxy | **Linux / macOS / Windows**, ~50MB disk, ~5MB RAM |
-| MCP server | Node.js 18+ (for JSON-RPC stdio bridge) |
-| Network | Localhost only (proxy ↔ MCP ↔ agent on same machine) |
-| GPU | Not needed. Ever. |
-| External services | None (WAL is local file, vault is in-memory AES-256-GCM) |
-
-**OS-dependent features:**
-
-| Feature | Linux | macOS | Windows |
-|---------|-------|-------|---------|
-| HTTP proxy + SRR + WAL + Merkle | Yes | Yes | Yes |
-| MCP intent verification (Shadow Mode) | Yes | Yes | Yes |
-| API key isolation | Yes | Yes | Yes |
-| `--sandbox` (namespace + seccomp + eBPF) | **Yes** | No | No |
-| `--contained` (Docker isolation) | Yes | Yes | Yes (Docker Desktop) |
-
-The proxy and all governance logic run on any OS. **Structural bypass prevention** (`--sandbox`) requires Linux kernel features (user namespaces, seccomp-BPF, TC eBPF filter). Without `--sandbox`, the proxy governs traffic that passes through it, but an agent could bypass by making direct HTTPS connections.
-
-## Dual-Lock Architecture
-
-```
-OpenClaw Gateway / Claude Desktop / Cursor
-    |
-    ├─ gmail MCP server
-    ├─ github MCP server
-    ├─ gvm-governance MCP server  ← this package
-    |   |
-    |   ├─ gvm_policy_check(method, url)       → Allow/Delay/Deny
-    |   ├─ gvm_declare_intent(operation, ...)   → register intent for forgery detection
-    |   ├─ gvm_request_secret(host)             → confirm credential injection
-    |   ├─ gvm_checkpoint(label, step)          → save state for rollback
-    |   ├─ gvm_rollback(step)                   → restore to checkpoint
-    |   └─ gvm_audit_log(last_n)                → view governance decisions
-    |
-    └─ [HTTP_PROXY=localhost:8080] ← GVM proxy (enforcement layer)
-```
-
-**Layer 1 — MCP tools (cooperative):** Agent calls `gvm_declare_intent` before API requests. The proxy cross-checks declared intent against actual HTTP target. This enables forgery detection without SDK integration.
-
-**Layer 2 — HTTP proxy (forced):** All outbound HTTP goes through the GVM proxy regardless of whether the agent uses MCP tools. Undeclared requests trigger Default-to-Caution (Delay). Denied URLs return 403. The agent never holds API keys.
-
-**Result:** If the agent cooperates via MCP → smooth operation with full audit trail. If the agent skips MCP (prompt injection, bugs) → the proxy catches it anyway.
-
-## MCP Tools
-
-| Tool | Purpose | When to use |
-|------|---------|-------------|
-| `gvm_policy_check` | Dry-run policy evaluation | Before any external API call |
-| `gvm_declare_intent` | Register operation for forgery detection | After policy check passes |
-| `gvm_request_secret` | Confirm credential auto-injection | When calling authenticated APIs |
-| `gvm_checkpoint` | Save agent state | Before risky operations (IC-2+) |
-| `gvm_rollback` | Restore to checkpoint | After a Deny, instead of restarting |
-| `gvm_audit_log` | View recent decisions | Investigating governance events |
+---
 
 ## Quick Start
 
@@ -107,30 +40,33 @@ OpenClaw Gateway / Claude Desktop / Cursor
 # 1. Install GVM proxy
 cargo binstall gvm-proxy gvm-cli
 
-# 2. Install MCP server + skills (clones into ~/.openclaw/skills/)
+# 2. Install MCP server + skills
 git clone https://github.com/skwuwu/analemma-gvm-openclaw.git ~/.openclaw/skills/gvm-governance
 cd ~/.openclaw/skills/gvm-governance/mcp-server && npm install && npm run build
 
 # 3. Start proxy
 gvm-proxy
+
+# 4. Verify it works
+curl -s http://localhost:8080/gvm/health
+# → {"status":"healthy","version":"0.1.0"}
 ```
 
-Then add the MCP server to your agent platform:
-
 <details>
-<summary><b>OpenClaw</b></summary>
+<summary><b>OpenClaw config</b></summary>
 
 The skill auto-loads from `~/.openclaw/skills/`. For MCP tools, add to config:
 ```bash
 openclaw config set mcp.servers.gvm-governance.command node
-openclaw config set mcp.servers.gvm-governance.args.0 "$HOME/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"
+openclaw config set mcp.servers.gvm-governance.args.0 \
+  "$HOME/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"
 ```
 </details>
 
 <details>
-<summary><b>Claude Desktop</b></summary>
+<summary><b>Claude Desktop / Cursor / Windsurf</b></summary>
 
-Add to `claude_desktop_config.json`:
+Add to MCP config JSON:
 ```json
 {
   "mcpServers": {
@@ -143,45 +79,84 @@ Add to `claude_desktop_config.json`:
 ```
 </details>
 
-<details>
-<summary><b>Cursor / Windsurf</b></summary>
+---
 
-Same JSON format as Claude Desktop in their respective MCP settings.
-</details>
+## MCP Tools
 
-## Repository layout
+| Tool | What it does |
+|------|-------------|
+| `gvm_declare_intent` | Declare operation before API call — **required in Shadow Mode** |
+| `gvm_policy_check` | Dry-run: will this request be allowed? |
+| `gvm_request_secret` | Confirm credential auto-injection (never set auth headers) |
+| `gvm_checkpoint` | Save state before risky operations |
+| `gvm_rollback` | Restore to checkpoint after a Deny |
+| `gvm_audit_log` | View recent governance decisions |
+| `gvm_load_rulesets` | Auto-detect installed skills → load matching rules |
+
+---
+
+## Preset Rulesets
+
+10 rulesets covering top OpenClaw skills. Pattern: **read → Allow, write → Delay, delete → Deny**.
+
+| Ruleset | Domains | Skills |
+|---------|---------|--------|
+| `github.toml` | api.github.com | github, gh-issues, coding-agent |
+| `gmail.toml` | gmail.googleapis.com | gmail, himalaya |
+| `slack.toml` | slack.com/api | slack |
+| `discord.toml` | discord.com/api | discord |
+| `notion.toml` | api.notion.com | notion |
+| `trello.toml` | api.trello.com | trello |
+| `openai.toml` | api.openai.com | openai-image-gen, openai-whisper-api |
+| `gemini.toml` | googleapis.com | gemini |
+| `spotify.toml` | api.spotify.com | spotify-player |
+| `weather.toml` | wttr.in | weather |
+
+Skills with no matching ruleset use Default-to-Caution (Delay + audit log).
+
+---
+
+## Performance
 
 ```
-mcp-server/
-  src/index.ts        # MCP server — 7 governance tools over JSON-RPC stdio
-  dist/               # Compiled output (after npm run build)
-  package.json
-  tsconfig.json
-skills/
-  gvm-governance/
-    SKILL.md           # OpenClaw skill — agent instructions + Shadow Mode rules
-  gvm-audit/
-    SKILL.md           # /gvm-audit slash command
-rulesets/
-  registry.json        # Skill-to-ruleset mapping (auto-detection)
-  _default.toml        # Fallback: localhost Allow, unknown → Default-to-Caution
-  github.toml          # api.github.com rules
-  gmail.toml           # gmail.googleapis.com rules
-  slack.toml           # slack.com/api rules
-  discord.toml         # discord.com/api rules
-  notion.toml          # api.notion.com rules
-  trello.toml          # api.trello.com rules
-  openai.toml          # api.openai.com rules
-  gemini.toml          # generativelanguage.googleapis.com rules
-  spotify.toml         # api.spotify.com rules
-  weather.toml         # wttr.in, open-meteo.com rules
-demo/
-  shadow-mode-demo.sh  # Standalone demo (curl only, no OpenClaw needed)
-  README.md
-README.md
+  gvm_declare_intent            ~0.35 ms   (stdio + policy check + intent register)
+  Shadow verify                 ~0.01 ms   (in-memory lookup)
+  SRR + ABAC evaluation          <0.01 ms  (compiled regex, sub-μs)
+  ──────────────────────────────────────
+  Total GVM overhead (Allow)    ~0.4 ms
+  External API latency          50-500 ms
 ```
 
-## Why MCP + Proxy (not just one)
+| Path | Latency | What happens |
+|------|---------|-------------|
+| **Allow** | ~0.4 ms | Intent verified, request forwarded |
+| **Deny** | ~4.2 ms | WAL fsync (audit record durable before 403) |
+| **Shadow Deny** | ~0.01 ms | No intent → instant 403, no WAL needed |
+
+Deny is slower because the denial record must be durable before the 403 response. This is intentional — Cilium/Envoy use fire-and-forget logging; GVM blocks until fsynced.
+
+Benchmark: [Daytona sandbox measurements](https://github.com/skwuwu/analemma-gvm-daytona/blob/master/bench/results.md) (N=50, real cloud).
+
+---
+
+## How it works
+
+```
+Agent (OpenClaw / Claude / Cursor)
+  │
+  ├─ MCP: gvm_declare_intent()     ← cooperative layer
+  │
+  ├─ HTTP request via proxy         ← enforcement layer
+  │   ├─ Shadow verify (intent exists?)
+  │   ├─ SRR: URL + method + path rules
+  │   ├─ ABAC: semantic policy (if intent declared)
+  │   ├─ API key injection (agent never holds keys)
+  │   └─ WAL: Merkle-chained audit record
+  │
+  └─ External API
+```
+
+**Why two layers?**
 
 | Approach | Cooperative? | Forced? | Forgery detection? |
 |----------|-------------|---------|-------------------|
@@ -189,95 +164,57 @@ README.md
 | Proxy only | No | Yes — all HTTP intercepted | No — no semantic layer |
 | **MCP + Proxy** | **Yes** | **Yes** | **Yes — cross-layer** |
 
-MCP alone trusts the agent to call tools. A prompt-injected agent can skip them.
-Proxy alone catches URL violations but can't cross-check semantic intent.
-Together, they provide the dual-lock: cooperate if honest, enforce if compromised.
+---
 
-## Performance: MCP Path Latency
+## Zero Infrastructure
 
-### Step-by-step breakdown (Allow path)
+| | GVM Proxy | NemoClaw | Container-based |
+|---|---|---|---|
+| **Binary** | **17MB** | ~2GB (Python + models) | 500MB+ (Docker) |
+| **Memory** | **~5MB** | 512MB-2GB | 256MB+ |
+| **GPU** | No | Required | Depends |
+| **Startup** | <1s | 10-30s | 5-15s |
+
+<details>
+<summary><b>OS compatibility</b></summary>
+
+| Feature | Linux | macOS | Windows |
+|---------|-------|-------|---------|
+| Proxy + SRR + WAL + Merkle | Yes | Yes | Yes |
+| MCP Shadow Mode | Yes | Yes | Yes |
+| API key isolation | Yes | Yes | Yes |
+| `--sandbox` (namespace + seccomp + eBPF) | **Yes** | No | No |
+| `--contained` (Docker isolation) | Yes | Yes | Yes |
+
+Without `--sandbox`, the proxy governs traffic that passes through it, but an agent could bypass by making direct HTTPS connections.
+</details>
+
+<details>
+<summary><b>SDK vs MCP comparison</b></summary>
+
+| Capability | SDK (`@ic`) | MCP + Proxy |
+|-----------|------------|-------------|
+| SRR URL matching | Automatic | Automatic |
+| ABAC policy | Automatic | `declare_intent` call |
+| Cross-layer forgery | Automatic (`max_strict`) | Shadow Mode required |
+| API key isolation | Automatic | Automatic |
+| Merkle audit | Automatic | Automatic |
+| Checkpoint | `auto_checkpoint="ic2+"` | `gvm_checkpoint` manual |
+| Rollback | `GVMRollbackError` auto | `gvm_rollback` manual |
+| Language | Python only | Any MCP client |
+| Code changes | Add `@ic()` decorators | Zero |
+</details>
+
+---
+
+## Repository layout
 
 ```
-Agent decides to call Stripe API
-  │
-  ├─ 1. gvm_declare_intent (MCP tool call)
-  │    ├─ stdio JSON-RPC serialize/deserialize    ~0.05 ms
-  │    ├─ POST /gvm/check (dry-run policy check)  ~0.15 ms  localhost HTTP
-  │    └─ POST /gvm/intent (register intent)      ~0.15 ms  localhost HTTP + mutex + Vec push
-  │    subtotal:                                   ~0.35 ms
-  │
-  ├─ 2. HTTP request through proxy
-  │    ├─ Shadow verify (IntentStore.verify)       ~0.01 ms  in-memory lookup, no I/O
-  │    ├─ SRR + ABAC policy evaluation             <0.01 ms  compiled regex, sub-μs
-  │    ├─ API key injection                         <0.01 ms  header insert
-  │    └─ Forward to upstream                      50-500 ms network-dependent
-  │    subtotal:                                   ~0.03 ms  GVM overhead
-  │
-  Total GVM overhead (Allow):                      ~0.4 ms
-  External API latency:                            50-500 ms
-  GVM as % of total:                               0.1-0.8%
+mcp-server/           MCP server — 7 governance tools (JSON-RPC stdio)
+skills/               OpenClaw skills (SKILL.md)
+rulesets/             10 preset SRR rulesets + auto-detection registry
+demo/                 Shadow Mode demo (curl only, no OpenClaw needed)
 ```
-
-### Deny path (WAL-durable)
-
-```
-  gvm_declare_intent                               ~0.35 ms  (same as Allow)
-  Shadow verify + SRR → Deny decision              ~0.01 ms
-  WAL fsync (durable audit record before 403)      ~3.8 ms   intentional — audit first
-  Total:                                           ~4.2 ms
-```
-
-The 3.8 ms Deny overhead is a deliberate design choice — the denial record must be durable before the 403 response. Cilium/Envoy use fire-and-forget logging; GVM blocks until the audit entry is fsynced. For AI agent actions (wire transfers, credential access), 3.8 ms of audit durability is worth it.
-
-### Comparison
-
-| Path | SDK (Python `@ic`) | MCP + Proxy | Difference |
-|------|-------------------|-------------|------------|
-| **Allow** | ~0.28 ms | ~0.4 ms | +0.12 ms (intent registration) |
-| **Deny** | ~3.8 ms | ~4.2 ms | +0.4 ms (intent + check) |
-| **Shadow Deny** (no intent) | N/A | ~0.01 ms + 403 | Instant rejection |
-
-Benchmark source: [Daytona sandbox measurements](https://github.com/skwuwu/analemma-gvm-daytona/blob/master/bench/results.md) (N=50, real cloud environment).
-
-### What MCP adds vs loses
-
-| Capability | SDK (Python `@ic`) | MCP + Proxy | Trade-off |
-|-----------|-------------------|-------------|-----------|
-| **SRR URL matching** | Automatic (proxy) | Automatic (proxy) | Identical |
-| **ABAC policy eval** | Automatic (`@ic()` headers) | `gvm_declare_intent` call | MCP: agent must cooperate |
-| **Cross-layer forgery** | Automatic (`max_strict`) | Intent-vs-URL cross-check | MCP: undeclared = Tier 1 only |
-| **API key isolation** | Automatic (proxy) | Automatic (proxy) | Identical |
-| **Merkle audit chain** | Automatic (proxy) | Automatic (proxy) | Identical |
-| **Checkpoint** | `auto_checkpoint="ic2+"` | `gvm_checkpoint` manual call | MCP: explicit, not automatic |
-| **Rollback on Deny** | `GVMRollbackError` auto-raised | `gvm_rollback` manual call | MCP: no exception flow |
-| **Fail-close** | Proxy down = no network | Proxy down = no network | Identical |
-| **Rate limiting** | Per-agent (header-based) | Per-agent (`X-GVM-Agent-Id`) | Identical |
-| **Language support** | Python only | Any MCP client | MCP: universal |
-| **Integration effort** | Add `@ic()` to functions | Configure MCP server | MCP: zero code changes |
-
-**Summary:** MCP trades automatic SDK integration for universal platform compatibility. The proxy enforcement layer (SRR, key isolation, Merkle audit, fail-close) is identical — it doesn't depend on MCP or SDK. The difference is in the cooperative layer: SDK does it automatically via decorators; MCP relies on the agent calling tools, with the proxy as safety net.
-
-### When to use which
-
-| Scenario | Recommended | Reason |
-|----------|-------------|--------|
-| Python agent, deep integration | SDK (`@ic` + `GVMAgent`) | Automatic forgery detection, auto-checkpoint |
-| OpenClaw / Claude Desktop / Cursor | MCP server | Universal, zero code changes |
-| Multi-language environment | MCP server | Language-agnostic |
-| Maximum security (production) | SDK + `--sandbox` | Automatic + namespace isolation + seccomp |
-| Quick evaluation | MCP server | Install in 2 minutes, no code changes |
-
-## System requirements
-
-| Component | SDK approach | MCP approach |
-|-----------|-------------|-------------|
-| GVM proxy | `cargo binstall gvm-proxy` | `cargo binstall gvm-proxy` |
-| Runtime | Python 3.9+ | Node.js 18+ |
-| SDK | `pip install gvm` | Not needed |
-| MCP server | Not needed | This package (`npm run build`) |
-| Agent platform | Any (manual `HTTP_PROXY`) | OpenClaw, Claude Desktop, Cursor, Windsurf, etc. |
-| OS (proxy + governance) | Linux / macOS / Windows | Linux / macOS / Windows |
-| OS (structural isolation) | **Linux only** (`--sandbox`) | **Linux only** (`--sandbox`) |
 
 ## Environment variables
 
@@ -290,4 +227,3 @@ Benchmark source: [Daytona sandbox measurements](https://github.com/skwuwu/anale
 ## Core repository
 
 Source and docs: [skwuwu/Analemma-GVM](https://github.com/skwuwu/Analemma-GVM)
-Docker image: `ghcr.io/skwuwu/analemma-gvm:latest`
