@@ -111,10 +111,17 @@ Supporting tools:
 | `gvm_policy_check` | Dry-run: will this request be allowed? |
 | `gvm_checkpoint` | Save state before risky operations |
 | `gvm_rollback` | Restore to checkpoint after a Deny |
-| `gvm_audit_log` | View recent governance decisions |
-| `gvm_load_rulesets` | Auto-detect installed skills → load matching rules |
 
-No separate `declare_intent` step needed — `gvm_fetch`/`gvm_read`/`gvm_write` handle it automatically.
+Query tools (ask your agent — no terminal needed):
+
+| Tool | What it does | Try asking |
+|------|-------------|------------|
+| `gvm_status` | Shadow mode, proxy health, active intents | "Is GVM running?" |
+| `gvm_audit_log` | Recent decisions from WAL | "What was blocked today?" |
+| `gvm_blocked_summary` | Human-readable security summary | "Show security summary" |
+| `gvm_load_rulesets` | Auto-detect skills → load rules | "Load rules for my skills" |
+
+No CLI needed. Your chat interface is the dashboard.
 
 ---
 

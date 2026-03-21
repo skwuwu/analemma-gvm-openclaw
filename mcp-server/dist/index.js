@@ -219,26 +219,7 @@ server.registerTool("gvm_write", {
     });
     return ok(JSON.stringify(result, null, 2));
 });
-// ── Tool 3: gvm_request_secret ───────────────────────────────────────────────
-server.registerTool("gvm_request_secret", {
-    title: "GVM Request Secret",
-    description: "Confirm that GVM will auto-inject credentials for a given API host. " +
-        "The agent never sees raw keys — the proxy injects them into the Authorization header. " +
-        "You do NOT need to set auth headers manually.",
-    inputSchema: {
-        host: z.string().describe("Target API host (e.g. api.stripe.com)"),
-    },
-}, async (args) => {
-    return ok(JSON.stringify({
-        host: args.host,
-        injection: "automatic",
-        agent_action: "none — do NOT set Authorization headers",
-        how: `Make HTTP requests to ${args.host} through the proxy (HTTP_PROXY=${GVM_PROXY_URL}). ` +
-            "The proxy strips any agent-supplied auth headers and injects the correct credential.",
-        proxy_url: GVM_PROXY_URL,
-    }, null, 2));
-});
-// ── Tool 4: gvm_checkpoint ───────────────────────────────────────────────────
+// ── Tool 3: gvm_checkpoint ────────────────────────────────────────────────────
 server.registerTool("gvm_checkpoint", {
     title: "GVM Checkpoint",
     description: "Save a checkpoint of the current agent state. " +
@@ -293,29 +274,204 @@ server.registerTool("gvm_rollback", {
         merkle_verified: cp.merkle_verified,
     }, null, 2));
 });
-// ── Tool 6: gvm_audit_log ────────────────────────────────────────────────────
-server.registerTool("gvm_audit_log", {
-    title: "GVM Audit Log",
-    description: "View governance status and recent decisions. " +
-        "Shows proxy info and provides CLI commands for detailed WAL analysis.",
-    inputSchema: {
-        last_n: z.number().optional().describe("Number of recent events (default: 10)"),
-        decision: z.string().optional().describe("Filter: Allow, Delay, or Deny"),
-    },
-}, async (args) => {
+// ── Tool 5: gvm_status — replaces CLI "gvm status" ──────────────────────────
+server.registerTool("gvm_status", {
+    title: "GVM Status",
+    description: "Show current GVM security status: shadow mode, active rulesets, " +
+        "proxy health, and intent store stats. " +
+        "Use when user asks 'what's my security status?' or 'is GVM running?'",
+    inputSchema: {},
+}, async () => {
     const { status, data } = await gvmFetch("/gvm/info");
     if (status !== 200) {
-        return ok(`Failed to retrieve audit info (HTTP ${status}): ${JSON.stringify(data)}`);
+        return ok(JSON.stringify({ proxy: "offline", error: "GVM proxy not responding" }));
     }
+    const info = data;
+    const shadow = info.shadow;
+    const registry = info.registry;
     return ok(JSON.stringify({
-        proxy_status: "running",
-        info: data,
-        cli_commands: {
-            list: `gvm audit list --last ${args.last_n ?? 10}` +
-                (args.decision ? ` --decision ${args.decision}` : ""),
-            verify: "gvm audit verify --wal data/wal.log",
-            export: "gvm audit export --format json --since 7d",
+        proxy: "running",
+        shadow_mode: shadow?.mode ?? "unknown",
+        active_intents: shadow?.active_intents ?? 0,
+        operations: {
+            core: registry?.core_operations ?? 0,
+            custom: registry?.custom_operations ?? 0,
         },
+        version: info.version,
+    }, null, 2));
+});
+// ── Tool 6: gvm_audit_log — replaces CLI "gvm audit list" ───────────────────
+server.registerTool("gvm_audit_log", {
+    title: "GVM Audit Log",
+    description: "View recent governance decisions from the WAL audit log. " +
+        "Shows Allow, Delay, Deny decisions with operation, target, and timestamp. " +
+        "Use when user asks 'what was blocked?' or 'show recent API calls'.",
+    inputSchema: {
+        last_n: z.number().optional().describe("Number of recent events (default: 20)"),
+        filter: z
+            .string()
+            .optional()
+            .describe("Filter by decision: 'all' (default), 'denied', 'delayed', 'allowed'"),
+    },
+}, async (args) => {
+    // Read WAL file directly for richer data
+    const walPaths = [
+        join(process.cwd(), "data", "wal.log"),
+        join(process.env.HOME ?? "", ".gvm", "data", "wal.log"),
+        "data/wal.log",
+    ];
+    let events = [];
+    for (const p of walPaths) {
+        try {
+            if (!existsSync(p))
+                continue;
+            const lines = readFileSync(p, "utf-8").trim().split("\n");
+            for (const line of lines) {
+                try {
+                    const evt = JSON.parse(line);
+                    if (evt.event_id)
+                        events.push(evt);
+                }
+                catch {
+                    // skip malformed lines
+                }
+            }
+            break; // found and parsed WAL
+        }
+        catch {
+            continue;
+        }
+    }
+    // Filter
+    const filter = args.filter?.toLowerCase() ?? "all";
+    if (filter !== "all") {
+        events = events.filter((e) => {
+            const d = String(e.decision ?? "").toLowerCase();
+            if (filter === "denied")
+                return d === "deny" || d.includes("deny");
+            if (filter === "delayed")
+                return d.includes("delay");
+            if (filter === "allowed")
+                return d === "allow";
+            return true;
+        });
+    }
+    // Last N
+    const lastN = args.last_n ?? 20;
+    events = events.slice(-lastN);
+    // Format for readability
+    const formatted = events.map((e) => ({
+        time: e.timestamp,
+        decision: e.decision,
+        operation: e.operation ?? "unknown",
+        target: `${e.transport && e.transport.method || "?"} ${e.transport && e.transport.host || "?"}${e.transport && e.transport.path || ""}`,
+        agent: e.agent_id,
+        status: e.status,
+    }));
+    return ok(JSON.stringify({
+        total_in_wal: events.length,
+        filter,
+        events: formatted,
+    }, null, 2));
+});
+// ── Tool 7: gvm_blocked_summary — replaces CLI dashboard ────────────────────
+server.registerTool("gvm_blocked_summary", {
+    title: "GVM Blocked Summary",
+    description: "Human-readable summary of governance activity. " +
+        "Shows counts of allowed, delayed, and denied requests. " +
+        "Use when user asks 'what happened today?' or 'security summary'.",
+    inputSchema: {
+        period: z
+            .string()
+            .optional()
+            .describe("Time period: 'today', '1h', '24h', 'all' (default: 'today')"),
+    },
+}, async (args) => {
+    // Read WAL
+    const walPaths = [
+        join(process.cwd(), "data", "wal.log"),
+        join(process.env.HOME ?? "", ".gvm", "data", "wal.log"),
+        "data/wal.log",
+    ];
+    let events = [];
+    for (const p of walPaths) {
+        try {
+            if (!existsSync(p))
+                continue;
+            const lines = readFileSync(p, "utf-8").trim().split("\n");
+            for (const line of lines) {
+                try {
+                    const evt = JSON.parse(line);
+                    if (evt.event_id)
+                        events.push(evt);
+                }
+                catch {
+                    // skip
+                }
+            }
+            break;
+        }
+        catch {
+            continue;
+        }
+    }
+    // Filter by period
+    const period = args.period ?? "today";
+    const now = Date.now();
+    if (period !== "all") {
+        let cutoff = 0;
+        if (period === "today") {
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            cutoff = todayStart.getTime();
+        }
+        else if (period === "1h") {
+            cutoff = now - 3600_000;
+        }
+        else if (period === "24h") {
+            cutoff = now - 86400_000;
+        }
+        events = events.filter((e) => {
+            const ts = e.timestamp ? new Date(String(e.timestamp)).getTime() : 0;
+            return ts >= cutoff;
+        });
+    }
+    // Count by decision
+    let allowed = 0;
+    let delayed = 0;
+    let denied = 0;
+    const deniedDetails = [];
+    for (const e of events) {
+        const d = String(e.decision ?? "").toLowerCase();
+        if (d === "allow") {
+            allowed++;
+        }
+        else if (d.includes("delay")) {
+            delayed++;
+        }
+        else if (d === "deny" || d.includes("deny")) {
+            denied++;
+            const transport = e.transport;
+            deniedDetails.push(`${transport?.method ?? "?"} ${transport?.host ?? "?"}${transport?.path ?? ""} — ${e.operation ?? "unknown"}`);
+        }
+    }
+    // Get proxy status
+    const { data: infoData } = await gvmFetch("/gvm/info").catch(() => ({
+        data: null,
+    }));
+    const info = infoData;
+    const shadow = info?.shadow;
+    return ok(JSON.stringify({
+        period,
+        summary: {
+            allowed,
+            delayed,
+            denied,
+            total: allowed + delayed + denied,
+        },
+        denied_details: deniedDetails.length > 0 ? deniedDetails : "none",
+        shadow_mode: shadow?.mode ?? "unknown",
+        active_intents: shadow?.active_intents ?? 0,
     }, null, 2));
 });
 // ── Tool 7: gvm_load_rulesets ─────────────────────────────────────────────────

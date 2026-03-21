@@ -54,8 +54,12 @@ If allowed, it returns `{"decision": "Allow", "status": 200, "response": {...}}`
 - **gvm_policy_check(method, url)** — Dry-run: will this request be allowed?
 - **gvm_checkpoint(label, step)** — Save state before risky operations
 - **gvm_rollback(step)** — Restore to checkpoint after a Deny
-- **gvm_audit_log()** — View recent governance decisions
-- **gvm_load_rulesets(installed_skills)** — Auto-detect skills and load matching rules
+
+**Query tools (user asks, agent answers — no CLI needed):**
+- **gvm_status()** — Current shadow mode, proxy health, active intents
+- **gvm_audit_log(last_n?, filter?)** — Recent decisions from WAL
+- **gvm_blocked_summary(period?)** — Human-readable security summary
+- **gvm_load_rulesets(installed_skills)** — Auto-detect skills and load rules
 
 ## Rules
 
