@@ -8,6 +8,9 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build MCP Server
@@ -28,6 +31,9 @@ jobs:
   integration:
     name: MCP + Proxy Integration
     runs-on: ubuntu-latest
+    env:
+      GVM_PROXY_URL: http://127.0.0.1:8080
+      GVM_AGENT_ID: ci-agent
     steps:
       - uses: actions/checkout@v4
 
@@ -66,92 +72,81 @@ jobs:
       - name: Start proxy
         run: |
           cd proxy
-          ./target/release/gvm-proxy --config config/proxy.toml &
+          ./target/release/gvm-proxy --config config/proxy.toml > /tmp/gvm-proxy.log 2>&1 &
+          echo $! > /tmp/gvm-proxy.pid
           sleep 3
-          curl -sf http://127.0.0.1:8080/gvm/health
+          curl -sf http://127.0.0.1:8080/gvm/health || { cat /tmp/gvm-proxy.log; exit 1; }
+
+      - name: Create MCP test helper
+        run: |
+          cat > /tmp/mcp_call.py << 'PYEOF'
+          import subprocess, json, sys, os
+
+          tool_name = sys.argv[1]
+          tool_args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+
+          init = json.dumps({"jsonrpc":"2.0","id":1,"method":"initialize",
+              "params":{"protocolVersion":"2024-11-05","capabilities":{},
+              "clientInfo":{"name":"ci","version":"1.0"}}})
+          call = json.dumps({"jsonrpc":"2.0","id":2,"method":"tools/call",
+              "params":{"name": tool_name, "arguments": tool_args}})
+
+          env = {**os.environ, "GVM_PROXY_URL": "http://127.0.0.1:8080", "GVM_AGENT_ID": "ci-agent"}
+          r = subprocess.run(["node", "mcp-server/dist/index.js"],
+              input=(init + "\n" + call + "\n").encode(),
+              capture_output=True, timeout=15, env=env)
+
+          stderr = r.stderr.decode()
+          if r.returncode != 0 and not r.stdout:
+              print(json.dumps({"error": f"MCP server failed: {stderr[:200]}"}))
+              sys.exit(0)
+
+          for line in r.stdout.decode().strip().split("\n"):
+              if not line.strip():
+                  continue
+              try:
+                  d = json.loads(line)
+                  if d.get("id") == 2:
+                      text = d["result"]["content"][0]["text"]
+                      print(text)
+                      sys.exit(0)
+              except (json.JSONDecodeError, KeyError, IndexError):
+                  continue
+
+          print(json.dumps({"error": "no response from MCP server", "stderr": stderr[:200]}))
+          PYEOF
 
       - name: Test gvm_policy_check (Allow)
         run: |
-          RESULT=$(python3 -c "
-          import subprocess, json
-          init = json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05','capabilities':{},'clientInfo':{'name':'ci','version':'1.0'}}})
-          call = json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'gvm_policy_check','arguments':{'method':'GET','url':'https://api.github.com/repos/test/test/issues'}}})
-          r = subprocess.run(['node','mcp-server/dist/index.js'], input=(init+'\n'+call+'\n').encode(), capture_output=True, timeout=10)
-          for line in r.stdout.decode().strip().split('\n'):
-              d = json.loads(line)
-              if d.get('id') == 2:
-                  result = json.loads(d['result']['content'][0]['text'])
-                  print(result.get('decision','?'))
-          ")
+          RESULT=$(python3 /tmp/mcp_call.py gvm_policy_check '{"method":"GET","url":"https://api.github.com/repos/test/test/issues"}' | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('decision','?'))")
           echo "gvm_policy_check (github read): $RESULT"
           [ "$RESULT" = "Allow" ] || { echo "FAIL: expected Allow, got $RESULT"; exit 1; }
 
       - name: Test gvm_policy_check (Deny)
         run: |
-          RESULT=$(python3 -c "
-          import subprocess, json
-          init = json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05','capabilities':{},'clientInfo':{'name':'ci','version':'1.0'}}})
-          call = json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'gvm_policy_check','arguments':{'method':'DELETE','url':'https://api.github.com/repos/test/test/git/refs/heads/main'}}})
-          r = subprocess.run(['node','mcp-server/dist/index.js'], input=(init+'\n'+call+'\n').encode(), capture_output=True, timeout=10)
-          for line in r.stdout.decode().strip().split('\n'):
-              d = json.loads(line)
-              if d.get('id') == 2:
-                  result = json.loads(d['result']['content'][0]['text'])
-                  print(result.get('decision','?'))
-          ")
+          RESULT=$(python3 /tmp/mcp_call.py gvm_policy_check '{"method":"DELETE","url":"https://api.github.com/repos/test/test/git/refs/heads/main"}' | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('decision','?'))")
           echo "gvm_policy_check (github delete branch): $RESULT"
           [ "$RESULT" = "Deny" ] || { echo "FAIL: expected Deny, got $RESULT"; exit 1; }
 
       - name: Test gvm_fetch (Deny blocks execution)
         run: |
-          RESULT=$(python3 -c "
-          import subprocess, json
-          init = json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05','capabilities':{},'clientInfo':{'name':'ci','version':'1.0'}}})
-          call = json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'gvm_fetch','arguments':{'operation':'github.merge_pr','method':'PUT','url':'https://api.github.com/repos/test/test/pulls/1/merge'}}})
-          r = subprocess.run(['node','mcp-server/dist/index.js'], input=(init+'\n'+call+'\n').encode(), capture_output=True, timeout=10)
-          for line in r.stdout.decode().strip().split('\n'):
-              d = json.loads(line)
-              if d.get('id') == 2:
-                  result = json.loads(d['result']['content'][0]['text'])
-                  print(f'{result.get(\"decision\",\"?\")},{result.get(\"blocked\",False)}')
-          ")
+          RESULT=$(python3 /tmp/mcp_call.py gvm_fetch '{"operation":"github.merge_pr","method":"PUT","url":"https://api.github.com/repos/test/test/pulls/1/merge"}' | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(f'{d.get(\"decision\",\"?\")},{d.get(\"blocked\",False)}')")
           echo "gvm_fetch (merge PR): $RESULT"
           echo "$RESULT" | grep -qE "Deny|True" || { echo "FAIL: expected Deny/blocked, got $RESULT"; exit 1; }
 
       - name: Test gvm_select_rulesets (list)
         run: |
-          RESULT=$(python3 -c "
-          import subprocess, json
-          init = json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05','capabilities':{},'clientInfo':{'name':'ci','version':'1.0'}}})
-          call = json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'gvm_select_rulesets','arguments':{}}})
-          r = subprocess.run(['node','mcp-server/dist/index.js'], input=(init+'\n'+call+'\n').encode(), capture_output=True, timeout=10)
-          for line in r.stdout.decode().strip().split('\n'):
-              d = json.loads(line)
-              if d.get('id') == 2:
-                  result = json.loads(d['result']['content'][0]['text'])
-                  avail = result.get('available', [])
-                  names = [r['name'] for r in avail]
-                  print(','.join(names))
-          ")
+          RESULT=$(python3 /tmp/mcp_call.py gvm_select_rulesets '{}' | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(','.join(r['name'] for r in d.get('available',[])))")
           echo "gvm_select_rulesets (list): $RESULT"
           echo "$RESULT" | grep -q "github" || { echo "FAIL: github ruleset not found in $RESULT"; exit 1; }
 
       - name: Test gvm_status
         run: |
-          RESULT=$(python3 -c "
-          import subprocess, json
-          init = json.dumps({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05','capabilities':{},'clientInfo':{'name':'ci','version':'1.0'}}})
-          call = json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'gvm_status','arguments':{}}})
-          r = subprocess.run(['node','mcp-server/dist/index.js'], input=(init+'\n'+call+'\n').encode(), capture_output=True, timeout=10)
-          for line in r.stdout.decode().strip().split('\n'):
-              d = json.loads(line)
-              if d.get('id') == 2:
-                  result = json.loads(d['result']['content'][0]['text'])
-                  print(result.get('proxy','?'))
-          ")
+          RESULT=$(python3 /tmp/mcp_call.py gvm_status '{}' | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('proxy','?'))")
           echo "gvm_status: $RESULT"
           [ "$RESULT" = "running" ] || { echo "FAIL: expected running, got $RESULT"; exit 1; }
 
       - name: Cleanup
         if: always()
-        run: pkill -f gvm-proxy 2>/dev/null || true
+        run: |
+          kill $(cat /tmp/gvm-proxy.pid 2>/dev/null) 2>/dev/null || true
