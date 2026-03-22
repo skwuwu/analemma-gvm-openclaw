@@ -86,7 +86,7 @@ The skill auto-loads from `~/.openclaw/skills/`. Add MCP server:
 
 | Tool | What it does | Example |
 |------|-------------|---------|
-| `gvm_fetch` | HTTP request with governance | `gvm_fetch("stripe.read", "GET", "https://api.stripe.com/v1/charges")` |
+| `gvm_fetch` | HTTP request with governance | `gvm_fetch("gmail.read", "GET", "https://gmail.googleapis.com/gmail/v1/users/me/messages")` |
 | `gvm_read` | GET shorthand | `gvm_read("github.list_prs", "https://api.github.com/repos/o/r/pulls")` |
 | `gvm_write` | POST shorthand | `gvm_write("slack.send", "https://slack.com/api/chat.postMessage", body)` |
 
@@ -116,7 +116,7 @@ One call = intent declaration + policy check + execution. No separate steps.
 ```
 Agent (OpenClaw / Claude / Cursor)
   │
-  ├─ gvm_fetch("stripe.read", GET, /charges)    ← one tool call
+  ├─ gvm_fetch("gmail.read", GET, /messages)     ← one tool call
   │     ├─ policy check (Allow/Deny?)
   │     ├─ intent registration (Shadow Mode)
   │     ├─ HTTP via proxy (credential injection)
