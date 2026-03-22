@@ -74,10 +74,10 @@ def main():
         )
     except subprocess.TimeoutExpired:
         print(json.dumps({"error": "MCP server timed out"}))
-        sys.exit(1)
+        return
     except FileNotFoundError:
         print(json.dumps({"error": "node not found"}))
-        sys.exit(1)
+        return
 
     stdout = r.stdout.decode("utf-8", "replace").strip()
     stderr = r.stderr.decode("utf-8", "replace").strip()
@@ -88,7 +88,6 @@ def main():
             "returncode": r.returncode,
             "stderr": stderr[:500],
         }))
-        sys.exit(1)
 
     # Parse JSON-RPC responses
     for line in stdout.split("\n"):

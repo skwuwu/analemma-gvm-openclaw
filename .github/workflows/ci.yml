@@ -76,12 +76,23 @@ jobs:
           sleep 3
           curl -sf http://127.0.0.1:8080/gvm/health || { echo "Proxy failed:"; cat /tmp/gvm-proxy.log; exit 1; }
 
+      - name: Verify proxy is reachable
+        run: |
+          curl -sf http://127.0.0.1:8080/gvm/health | python3 -c "import sys,json; print('Proxy:', json.loads(sys.stdin.read())['status'])"
+
       - name: Verify MCP server + proxy connectivity
         run: |
-          echo "=== MCP server smoke test ==="
           RAW=$(python3 scripts/mcp_call.py gvm_status)
-          echo "Raw response: $RAW"
-          echo "$RAW" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(f'Proxy: {d.get(\"proxy\",\"?\")}'); assert d.get('proxy')=='running' or 'error' not in d, f'Unexpected: {d}'"
+          echo "MCP gvm_status: $RAW"
+          echo "$RAW" | python3 -c "
+          import sys,json
+          d = json.loads(sys.stdin.read())
+          if 'error' in d:
+              print(f'ERROR: {d}')
+              sys.exit(1)
+          print(f'Proxy: {d.get(\"proxy\",\"?\")}')
+          assert d.get('proxy') == 'running', f'Expected running, got: {d}'
+          "
 
       - name: Test gvm_policy_check (Allow)
         run: |
