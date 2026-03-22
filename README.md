@@ -141,20 +141,23 @@ If the agent uses `gvm_fetch` → intent is automatic. If the agent bypasses
 
 ## Preset Rulesets
 
-10 rulesets covering top OpenClaw skills. Pattern: **read → Allow, write → Delay, delete → Deny**.
+11 rulesets covering top OpenClaw skills. Pattern: **read → Allow, write → Delay, delete → Deny**.
 
 | Ruleset | Skills covered | Domains |
 |---------|---------------|---------|
+| `google-workspace.toml` | gmail, google-calendar, google-drive, himalaya | gmail.googleapis.com, www.googleapis.com |
 | `github.toml` | github, gh-issues, coding-agent | api.github.com |
-| `gmail.toml` | gmail, himalaya | gmail.googleapis.com |
 | `slack.toml` | slack | slack.com/api |
 | `discord.toml` | discord | discord.com/api |
+| `llm-providers.toml` | anthropic, openai, gemini, groq, openrouter | api.anthropic.com, api.openai.com, generativelanguage.googleapis.com, api.groq.com, openrouter.ai |
+| `web-browsing.toml` | brave-search, firecrawl, tavily, serper | api.search.brave.com, api.firecrawl.dev, api.tavily.com, google.serper.dev |
 | `notion.toml` | notion | api.notion.com |
 | `openai.toml` | openai-image-gen, openai-whisper-api | api.openai.com |
 | `trello.toml` | trello | api.trello.com |
-| `gemini.toml` | gemini | googleapis.com |
 | `spotify.toml` | spotify-player | api.spotify.com |
-| `weather.toml` | weather | wttr.in |
+| `weather.toml` | weather | wttr.in, api.open-meteo.com |
+
+Notable policy updates: `github.toml` adds Deny for merge and repo delete. `slack.toml` adds Deny for channel archive and user kick.
 
 Unmatched domains → Default-to-Caution (300ms delay + audit log).
 
@@ -180,6 +183,8 @@ gvm run --contained my_agent.py
 ```
 
 Tier 1 is enough for cooperative agents. Tier 2 for production where prompt injection is a real threat.
+
+> **Sandbox note:** `--sandbox` and `--contained` modes mount `/workspace/output` as the only writable path. Agent output (files, exports) must be written there.
 
 ---
 
@@ -253,7 +258,7 @@ External API latency: 50-500 ms. GVM overhead: 0.1-0.8% of total.
 ```
 mcp-server/           MCP server — 10 governance tools (JSON-RPC stdio)
 skills/               OpenClaw skills (SKILL.md)
-rulesets/             10 preset SRR rulesets + auto-detection registry
+rulesets/             11 preset SRR rulesets + reference registry
 demo/                 Demo scripts
 ```
 
