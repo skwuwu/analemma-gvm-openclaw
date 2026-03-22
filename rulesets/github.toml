@@ -93,3 +93,17 @@ pattern = "api.github.com"
 path_regex = "^/repos/[^/]+/[^/]+/git/refs/.*"
 method = "DELETE"
 decision = { type = "Deny", reason = "Delete branch (destructive -- blocked)" }
+
+[[rules]]
+pattern = "api.github.com"
+path_regex = "^/repos/[^/]+/[^/]+/pulls/[^/]+/merge$"
+method = "PUT"
+decision = { type = "Deny", reason = "PR merge blocked (manual only)" }
+description = "GitHub: PR merge blocked"
+
+[[rules]]
+pattern = "api.github.com"
+path_regex = "^/repos/[^/]+$"
+method = "DELETE"
+decision = { type = "Deny", reason = "Repository deletion blocked" }
+description = "GitHub: repo delete blocked"

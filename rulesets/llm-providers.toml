@@ -1,0 +1,115 @@
+# GVM Ruleset: LLM Providers
+# Covers: anthropic, openai, gemini, groq, openrouter
+# Inference calls allowed. Admin/destructive operations blocked.
+
+# ── Anthropic ──
+
+[[rules]]
+pattern = "api.anthropic.com/v1/messages"
+method = "POST"
+decision = { type = "Allow" }
+description = "Anthropic: inference"
+
+[[rules]]
+pattern = "api.anthropic.com/v1/messages/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Anthropic: read message"
+
+# ── OpenAI ──
+
+[[rules]]
+pattern = "api.openai.com/v1/chat/completions"
+method = "POST"
+decision = { type = "Allow" }
+description = "OpenAI: chat completion"
+
+[[rules]]
+pattern = "api.openai.com/v1/embeddings"
+method = "POST"
+decision = { type = "Allow" }
+description = "OpenAI: embeddings"
+
+[[rules]]
+pattern = "api.openai.com/v1/audio/transcriptions"
+method = "POST"
+decision = { type = "Allow" }
+description = "OpenAI: whisper transcription"
+
+[[rules]]
+pattern = "api.openai.com/v1/images/generations"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+description = "OpenAI: image generation (cost)"
+
+[[rules]]
+pattern = "api.openai.com/v1/models"
+method = "GET"
+decision = { type = "Allow" }
+description = "OpenAI: list models"
+
+[[rules]]
+pattern = "api.openai.com/v1/fine_tuning/*"
+method = "*"
+decision = { type = "Deny", reason = "OpenAI: fine-tuning admin blocked" }
+description = "OpenAI: fine-tuning blocked"
+
+[[rules]]
+pattern = "api.openai.com/v1/files"
+method = "DELETE"
+decision = { type = "Deny", reason = "OpenAI: file deletion blocked" }
+description = "OpenAI: file delete blocked"
+
+# ── Google Gemini ──
+
+[[rules]]
+pattern = "generativelanguage.googleapis.com/v1beta/models/*"
+method = "POST"
+decision = { type = "Allow" }
+description = "Gemini: inference (v1beta)"
+
+[[rules]]
+pattern = "generativelanguage.googleapis.com/v1/models/*"
+method = "POST"
+decision = { type = "Allow" }
+description = "Gemini: inference (v1)"
+
+[[rules]]
+pattern = "generativelanguage.googleapis.com/v1/models"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gemini: list models"
+
+[[rules]]
+pattern = "generativelanguage.googleapis.com/v1beta/models"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gemini: list models (v1beta)"
+
+# ── Groq ──
+
+[[rules]]
+pattern = "api.groq.com/openai/v1/chat/completions"
+method = "POST"
+decision = { type = "Allow" }
+description = "Groq: chat completion"
+
+[[rules]]
+pattern = "api.groq.com/openai/v1/models"
+method = "GET"
+decision = { type = "Allow" }
+description = "Groq: list models"
+
+# ── OpenRouter ──
+
+[[rules]]
+pattern = "openrouter.ai/api/v1/chat/completions"
+method = "POST"
+decision = { type = "Allow" }
+description = "OpenRouter: chat completion"
+
+[[rules]]
+pattern = "openrouter.ai/api/v1/models"
+method = "GET"
+decision = { type = "Allow" }
+description = "OpenRouter: list models"

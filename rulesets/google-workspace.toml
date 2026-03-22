@@ -1,0 +1,109 @@
+# GVM Ruleset: Google Workspace
+# Covers: gog, gmail, google-calendar, google-drive skills
+# Domains: gmail.googleapis.com, www.googleapis.com
+
+# ── Gmail ──
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gmail: list messages"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gmail: read message"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/labels"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gmail: list labels"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/threads"
+method = "GET"
+decision = { type = "Allow" }
+description = "Gmail: list threads"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/send"
+method = "POST"
+decision = { type = "Delay", milliseconds = 3000 }
+description = "Gmail: send email (3s delay)"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/drafts"
+method = "POST"
+decision = { type = "Delay", milliseconds = 300 }
+description = "Gmail: create draft"
+
+[[rules]]
+pattern = "gmail.googleapis.com/gmail/v1/users/me/messages/*"
+method = "DELETE"
+decision = { type = "Deny", reason = "Gmail: email deletion blocked" }
+description = "Gmail: delete email blocked"
+
+[[rules]]
+pattern = "gmail.googleapis.com"
+path_regex = "^/gmail/v1/users/me/messages/[^/]+/trash$"
+method = "POST"
+decision = { type = "Deny", reason = "Gmail: trash blocked" }
+description = "Gmail: trash email blocked"
+
+# ── Google Calendar ──
+
+[[rules]]
+pattern = "www.googleapis.com/calendar/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Calendar: read events"
+
+[[rules]]
+pattern = "www.googleapis.com/calendar/*"
+method = "POST"
+decision = { type = "Allow" }
+description = "Calendar: create event"
+
+[[rules]]
+pattern = "www.googleapis.com/calendar/*"
+method = "PUT"
+decision = { type = "Allow" }
+description = "Calendar: update event"
+
+[[rules]]
+pattern = "www.googleapis.com/calendar/*"
+method = "DELETE"
+decision = { type = "Delay", milliseconds = 5000 }
+description = "Calendar: delete event (5s delay)"
+
+# ── Google Drive ──
+
+[[rules]]
+pattern = "www.googleapis.com/drive/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Drive: read files/folders"
+
+[[rules]]
+pattern = "www.googleapis.com"
+path_regex = "^/upload/drive/.*"
+method = "POST"
+decision = { type = "Delay", milliseconds = 3000 }
+description = "Drive: upload file (3s delay)"
+
+[[rules]]
+pattern = "www.googleapis.com"
+path_regex = "^/drive/.*/files/[^/]+/trash$"
+method = "POST"
+decision = { type = "Deny", reason = "Drive: file trash blocked" }
+description = "Drive: trash file blocked"
+
+[[rules]]
+pattern = "www.googleapis.com"
+path_regex = "^/drive/.*/files/[^/]+$"
+method = "DELETE"
+decision = { type = "Deny", reason = "Drive: file deletion blocked" }
+description = "Drive: delete file blocked"

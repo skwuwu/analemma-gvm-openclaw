@@ -69,3 +69,21 @@ pattern = "slack.com/api/chat.update"
 method = "POST"
 decision = { type = "Delay", milliseconds = 1000 }
 reason = "Edit message (write -- 1s delay for audit)"
+
+[[rules]]
+pattern = "slack.com/api/conversations.archive"
+method = "POST"
+decision = { type = "Deny", reason = "Channel archive blocked" }
+description = "Slack: archive channel blocked"
+
+[[rules]]
+pattern = "slack.com/api/conversations.kick"
+method = "POST"
+decision = { type = "Deny", reason = "Channel kick blocked" }
+description = "Slack: kick user blocked"
+
+[[rules]]
+pattern = "slack.com/api/files.upload"
+method = "POST"
+decision = { type = "Delay", milliseconds = 3000 }
+description = "Slack: file upload (3s delay)"

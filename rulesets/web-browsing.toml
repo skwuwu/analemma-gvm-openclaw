@@ -1,0 +1,53 @@
+# GVM Ruleset: Web Browsing & Search
+# Covers: brave-search, firecrawl, tavily, xurl, web_search/web_fetch tools
+# Search APIs allowed. Arbitrary POST to unknown domains handled by Shadow Mode.
+
+# ── Brave Search ──
+
+[[rules]]
+pattern = "api.search.brave.com/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Brave Search: query"
+
+# ── Firecrawl ──
+
+[[rules]]
+pattern = "api.firecrawl.dev/v1/scrape"
+method = "POST"
+decision = { type = "Allow" }
+description = "Firecrawl: scrape page"
+
+[[rules]]
+pattern = "api.firecrawl.dev/v1/crawl"
+method = "POST"
+decision = { type = "Delay", milliseconds = 1000 }
+description = "Firecrawl: crawl site (1s delay)"
+
+[[rules]]
+pattern = "api.firecrawl.dev/v1/crawl/*"
+method = "GET"
+decision = { type = "Allow" }
+description = "Firecrawl: check crawl status"
+
+# ── Tavily ──
+
+[[rules]]
+pattern = "api.tavily.com/search"
+method = "POST"
+decision = { type = "Allow" }
+description = "Tavily: search"
+
+[[rules]]
+pattern = "api.tavily.com/extract"
+method = "POST"
+decision = { type = "Allow" }
+description = "Tavily: extract content"
+
+# ── Serper (Google Search API) ──
+
+[[rules]]
+pattern = "google.serper.dev/search"
+method = "POST"
+decision = { type = "Allow" }
+description = "Serper: Google search"
