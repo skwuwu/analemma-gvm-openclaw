@@ -10,16 +10,16 @@ Install one skill. Your agent is protected.
 
 ## What it looks like
 
-**Allow vs Deny** — same agent, same Stripe API, different operations:
+**Gmail: read Allow, send Delay, delete Deny** — graduated enforcement on one domain:
 
 <p align="center">
-  <img src="assets/02-allow-flow.png" alt="GVM Allow and Deny flow" width="680">
+  <img src="assets/02-allow-flow.png" alt="GVM Google Workspace governance" width="680">
 </p>
 
-**Shadow Deny** — intent not declared, request blocked automatically:
+**Shadow Deny + Drive protection** — blocked requests at a glance:
 
 <p align="center">
-  <img src="assets/01-shadow-deny.png" alt="GVM Shadow Deny" width="680">
+  <img src="assets/01-shadow-deny.png" alt="GVM Shadow Deny + Drive" width="680">
 </p>
 
 **Security dashboard** — ask your agent, no CLI needed:
