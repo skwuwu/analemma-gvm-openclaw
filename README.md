@@ -34,13 +34,37 @@ No terminal. No CLI. The agent handles governance through MCP tools.
 
 ## Quick Start
 
+**Option A: HTTPS_PROXY (simplest — governs all traffic)**
+
 ```bash
-# 1. Install proxy binary
+# 1. Install and start proxy
+cargo binstall gvm-proxy
+gvm-proxy --config config/proxy.toml &
+
+# 2. Run any agent through GVM
+gvm run -- openclaw gateway          # proxy-only (Layer 2)
+gvm run --sandbox -- openclaw gateway # + kernel isolation (Layer 2+3)
+```
+
+**Option B: MCP Server (structured governance tools)**
+
+```bash
+# 1. Install proxy
 cargo binstall gvm-proxy
 
-# 2. Install skill (prebuilt — no build step)
-git clone https://github.com/skwuwu/analemma-gvm-openclaw.git \
-  ~/.openclaw/skills/gvm-governance
+# 2. Add to openclaw.json (or Claude Desktop / Cursor config)
+```
+
+```json
+{
+  "mcpServers": {
+    "gvm-governance": {
+      "command": "node",
+      "args": ["~/.openclaw/skills/gvm-governance/mcp-server/dist/index.js"],
+      "env": { "GVM_PROXY_URL": "http://127.0.0.1:8080" }
+    }
+  }
+}
 ```
 
 Done. The MCP server automatically launches the proxy.
@@ -125,17 +149,18 @@ Agent (OpenClaw / Claude / Cursor)
   └─ Response returned to agent
 ```
 
-**Shadow Mode:** the proxy rejects any HTTP request without prior MCP intent.
-If the agent uses `gvm_fetch` → intent is automatic. If the agent bypasses
-(prompt injection, `exec curl`) → no intent → blocked.
+**Two integration modes:**
 
-**Why two layers?**
+| Mode | How it works | Best for |
+|------|-------------|----------|
+| `gvm run -- openclaw gateway` | HTTPS_PROXY injected, all traffic governed | Simple setup, all Skills covered |
+| MCP Server (`gvm_fetch` etc.) | Structured tools + intent declaration | Cross-layer forgery detection |
 
-| Approach | Cooperative? | Forced? | Forgery detection? |
-|----------|-------------|---------|-------------------|
-| MCP only | Yes | No — agent can skip tools | No |
-| Proxy only | No | Yes — all HTTP intercepted | No — no semantic layer |
-| **MCP + Proxy** | **Yes** | **Yes** | **Yes — cross-layer** |
+**Shadow Mode** (MCP path): proxy rejects HTTP without prior MCP intent. `gvm_fetch` auto-declares intent. Bypass attempts (`exec curl`) → no intent → blocked.
+
+**HTTPS_PROXY mode**: all outbound HTTP/HTTPS from the agent process tree goes through the proxy. No MCP needed — SRR rules enforce domain/method/path policies on every request.
+
+**With `--sandbox`**: adds Linux namespace isolation, seccomp-BPF, eBPF TC filter (blocks non-proxy traffic at kernel level), and uprobe TLS plaintext inspection.
 
 ---
 
