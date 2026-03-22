@@ -1,0 +1,158 @@
+# CI: MCP server build + integration tests with GVM proxy.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: Build MCP Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and build
+        working-directory: mcp-server
+        run: |
+          npm install
+          npm run build
+      - name: Verify dist exists
+        run: test -f mcp-server/dist/index.js
+
+  integration:
+    name: MCP + Proxy Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: proxy
+
+      - name: Clone and build GVM proxy
+        run: |
+          git clone --depth 1 https://github.com/skwuwu/Analemma-GVM.git proxy
+          cd proxy
+          cargo build --release -p gvm-proxy
+
+      - name: Load rulesets into proxy config
+        run: |
+          python3 -c "
+          import os
+          rulesets = 'rulesets'
+          config = 'proxy/config'
+          parts = []
+          for f in ['_default.toml', 'github.toml', 'slack.toml', 'web-browsing.toml']:
+              path = os.path.join(rulesets, f)
+              if os.path.exists(path):
+                  parts.append('# -- ' + f + ' --\n' + open(path).read())
+          open(os.path.join(config, 'srr_network.toml'), 'w').write('\n'.join(parts))
+          print(f'{len(parts)} rulesets loaded')
+          "
+
+      - name: Start proxy
+        run: |
+          cd proxy
+          ./target/release/gvm-proxy --config config/proxy.toml &
+          sleep 3
+          curl -sf http://127.0.0.1:8080/gvm/health
+
+      - name: Test gvm_policy_check (Allow)
+        run: |
+          RESULT=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}
+          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gvm_policy_check","arguments":{"method":"GET","url":"https://api.github.com/repos/test/test/issues"}}}' \
+            | node mcp-server/dist/index.js 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          for line in sys.stdin:
+              d = json.loads(line)
+              if d.get('id') == 2:
+                  result = json.loads(d['result']['content'][0]['text'])
+                  print(result.get('decision', '?'))
+          ")
+          echo "gvm_policy_check (github read): $RESULT"
+          [ "$RESULT" = "Allow" ] || { echo "FAIL: expected Allow, got $RESULT"; exit 1; }
+
+      - name: Test gvm_policy_check (Deny)
+        run: |
+          RESULT=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}
+          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gvm_policy_check","arguments":{"method":"DELETE","url":"https://api.github.com/repos/test/test/git/refs/heads/main"}}}' \
+            | node mcp-server/dist/index.js 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          for line in sys.stdin:
+              d = json.loads(line)
+              if d.get('id') == 2:
+                  result = json.loads(d['result']['content'][0]['text'])
+                  print(result.get('decision', '?'))
+          ")
+          echo "gvm_policy_check (github delete branch): $RESULT"
+          [ "$RESULT" = "Deny" ] || { echo "FAIL: expected Deny, got $RESULT"; exit 1; }
+
+      - name: Test gvm_fetch (Deny blocks execution)
+        run: |
+          RESULT=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}
+          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gvm_fetch","arguments":{"operation":"github.merge_pr","method":"PUT","url":"https://api.github.com/repos/test/test/pulls/1/merge"}}}' \
+            | node mcp-server/dist/index.js 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          for line in sys.stdin:
+              d = json.loads(line)
+              if d.get('id') == 2:
+                  result = json.loads(d['result']['content'][0]['text'])
+                  blocked = result.get('blocked', False)
+                  print(f'{result.get(\"decision\",\"?\")}|{blocked}')
+          ")
+          echo "gvm_fetch (merge PR): $RESULT"
+          echo "$RESULT" | grep -q "Deny\|blocked" || echo "$RESULT" | grep -q "True" || { echo "FAIL: expected Deny/blocked"; exit 1; }
+
+      - name: Test gvm_select_rulesets (list)
+        run: |
+          RESULT=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}
+          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gvm_select_rulesets","arguments":{}}}' \
+            | node mcp-server/dist/index.js 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          for line in sys.stdin:
+              d = json.loads(line)
+              if d.get('id') == 2:
+                  result = json.loads(d['result']['content'][0]['text'])
+                  avail = result.get('available', [])
+                  names = [r['name'] for r in avail]
+                  print(f'{len(avail)} rulesets: {names[:5]}')
+          ")
+          echo "gvm_select_rulesets (list): $RESULT"
+          echo "$RESULT" | grep -q "github" || { echo "FAIL: github ruleset not found"; exit 1; }
+
+      - name: Test gvm_status
+        run: |
+          RESULT=$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}}}
+          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gvm_status","arguments":{}}}' \
+            | node mcp-server/dist/index.js 2>/dev/null \
+            | python3 -c "
+          import sys, json
+          for line in sys.stdin:
+              d = json.loads(line)
+              if d.get('id') == 2:
+                  result = json.loads(d['result']['content'][0]['text'])
+                  print(result.get('proxy', '?'))
+          ")
+          echo "gvm_status: $RESULT"
+          [ "$RESULT" = "running" ] || { echo "FAIL: expected running, got $RESULT"; exit 1; }
+
+      - name: Cleanup
+        if: always()
+        run: pkill -f gvm-proxy 2>/dev/null || true

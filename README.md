@@ -245,7 +245,7 @@ External API latency: 50-500 ms. GVM overhead: 0.1-0.8% of total.
 
 **WAL scaling:** The proxy WAL is a single append-only file. Under high throughput (1000+ events/sec), the batch channel (4096 capacity) can fill up. Single-agent OpenClaw usage is well within limits. Multi-agent production deployments should monitor WAL size.
 
-**No hot-reload:** SRR rules and ABAC policies require proxy restart to take effect. Planned for v2.0.
+**ABAC hot-reload:** SRR rules support hot-reload via `POST /gvm/reload` and `gvm_select_rulesets`. ABAC policies still require proxy restart.
 
 **OAuth2 token expiry:** Proxy does not check `expires_at` on OAuth2 credentials. Expired tokens are injected as-is; upstream returns 401. Planned for v1.1.
 
