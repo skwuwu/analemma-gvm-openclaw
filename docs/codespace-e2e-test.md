@@ -198,6 +198,115 @@ python3 demo/live-usecase-demo.py --scenario all
 kill $PROXY_PID 2>/dev/null
 ```
 
+## Test 6: MCP + Proxy + eBPF Uprobe (requires root)
+
+Full pipeline: MCP gvm_fetch → proxy CONNECT → uprobe SSL_write_ex capture → SRR policy check.
+This is the realistic user use-case with all layers active.
+
+```bash
+cd /workspaces/Analemma-GVM
+
+# Load github ruleset
+python3 -c "
+import os
+rulesets = '/workspaces/analemma-gvm-openclaw/rulesets'
+parts = []
+for f in ['_default.toml', 'github.toml']:
+    path = os.path.join(rulesets, f)
+    if os.path.exists(path): parts.append(open(path).read())
+open('config/srr_network.toml', 'w').write('\n'.join(parts))
+print(f'{len(parts)} rulesets loaded')
+"
+
+./target/release/gvm-proxy --config config/proxy.toml &
+PROXY_PID=$!
+sleep 2
+
+# Register uprobe on SSL_write_ex (requires root)
+LIBSSL=$(python3 -c "import _ssl; print(_ssl.__file__)" | xargs ldd | grep libssl | awk '{print $3}')
+OFFSET=$(nm -D $LIBSSL | grep "T SSL_write_ex" | awk '{print $1}')
+
+if [ -n "$OFFSET" ]; then
+    sudo bash -c "
+    mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null
+    echo > /sys/kernel/tracing/trace
+    echo 'p:gvm_ssl $LIBSSL:0x$OFFSET buf=+0(%si):string' > /sys/kernel/tracing/uprobe_events
+    echo 1 > /sys/kernel/tracing/events/uprobes/gvm_ssl/enable
+    " 2>/dev/null && echo "uprobe: attached to $LIBSSL" || echo "uprobe: skipped (no root)"
+    UPROBE_ATTACHED=true
+else
+    echo "uprobe: skipped (SSL_write_ex not found)"
+    UPROBE_ATTACHED=false
+fi
+
+cd /workspaces/analemma-gvm-openclaw
+
+# Step 1: MCP gvm_read — read GitHub issues (Allow)
+echo ""
+echo "=== Step 1: MCP gvm_policy_check (read issues → Allow) ==="
+python3 scripts/mcp_call.py gvm_policy_check '{"method":"GET","url":"https://api.github.com/repos/skwuwu/Analemma-GVM/issues"}' \
+  | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(f'Decision: {d.get(\"decision\")}')"
+
+# Step 2: Make actual HTTPS request through proxy (uprobe captures plaintext)
+echo ""
+echo "=== Step 2: HTTPS through proxy (uprobe captures) ==="
+HTTPS_PROXY=http://127.0.0.1:8080 python3 -c "
+import requests
+r = requests.get('https://api.github.com/repos/skwuwu/Analemma-GVM', timeout=10)
+print(f'Status: {r.status_code}, Repo: {r.json().get(\"name\", \"?\")}')" 2>/dev/null || echo "(request failed — expected if no network)"
+
+# Step 3: MCP gvm_fetch — merge PR (Deny + blocked)
+echo ""
+echo "=== Step 3: MCP gvm_fetch (merge PR → Deny) ==="
+python3 scripts/mcp_call.py gvm_fetch '{"operation":"github.merge_pr","method":"PUT","url":"https://api.github.com/repos/t/t/pulls/1/merge"}' \
+  | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(f'Decision: {d.get(\"decision\")}, Blocked: {d.get(\"blocked\")}')"
+
+# Step 4: MCP gvm_fetch — delete branch (Deny + blocked)
+echo ""
+echo "=== Step 4: MCP gvm_fetch (delete branch → Deny) ==="
+python3 scripts/mcp_call.py gvm_fetch '{"operation":"github.delete_branch","method":"DELETE","url":"https://api.github.com/repos/t/t/git/refs/heads/old"}' \
+  | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(f'Decision: {d.get(\"decision\")}, Blocked: {d.get(\"blocked\")}')"
+
+# Step 5: Verify uprobe captured plaintext
+if [ "$UPROBE_ATTACHED" = "true" ]; then
+    echo ""
+    echo "=== Step 5: uprobe TLS plaintext captures ==="
+    sudo cat /sys/kernel/tracing/trace 2>/dev/null | grep gvm_ssl | tail -5 | sed 's/.*buf="//'
+
+    # Cleanup uprobe
+    sudo bash -c "
+    echo 0 > /sys/kernel/tracing/events/uprobes/gvm_ssl/enable
+    echo > /sys/kernel/tracing/uprobe_events
+    " 2>/dev/null
+fi
+
+# Step 6: Verify proxy policy check with uprobe operation tag
+echo ""
+echo "=== Step 6: Proxy SRR decisions (uprobe context) ==="
+for check in \
+  '{"method":"GET","target_host":"api.github.com","target_path":"/repos/t/t/issues","operation":"uprobe"}:read_issues' \
+  '{"method":"PUT","target_host":"api.github.com","target_path":"/repos/t/t/pulls/1/merge","operation":"uprobe"}:merge_pr' \
+  '{"method":"DELETE","target_host":"api.github.com","target_path":"/repos/t/t/git/refs/heads/main","operation":"uprobe"}:delete_branch'
+do
+  BODY="${check%%:*}"
+  LABEL="${check##*:}"
+  DECISION=$(curl -sf -X POST http://127.0.0.1:8080/gvm/check \
+    -H "Content-Type: application/json" -d "$BODY" \
+    | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('decision','?'))")
+  echo "  $LABEL: $DECISION"
+done
+
+# Expected:
+#   Step 1: Decision: Allow
+#   Step 2: Status: 200 + uprobe captures "GET /repos/skwuwu/Analemma-GVM HTTP/1.1"
+#   Step 3: Decision: Deny, Blocked: True
+#   Step 4: Decision: Deny, Blocked: True
+#   Step 5: HTTP plaintext lines (if uprobe attached)
+#   Step 6: read_issues=Allow, merge_pr=Deny, delete_branch=Deny
+
+kill $PROXY_PID 2>/dev/null
+```
+
 ## Expected Results
 
 | Test | What it verifies | Expected |
@@ -207,6 +316,7 @@ kill $PROXY_PID 2>/dev/null
 | 3 | Ruleset hot-reload | Applied + Allow after reload |
 | 4 | Status + audit | Proxy: running |
 | 5 | Full demo script | Allow/Delay/Deny per scenario |
+| 6 | MCP + proxy + uprobe | Allow (read), Deny (merge/delete), plaintext captured |
 
 ## Troubleshooting
 
