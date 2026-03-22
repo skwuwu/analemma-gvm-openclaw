@@ -39,9 +39,35 @@ method = "PUT"
 decision = { type = "Allow" }
 reason = "Add reaction (low-risk write)"
 
+# Webhook -- Delay
+[[rules]]
+pattern = "discord.com"
+path_regex = "^/api/webhooks/.*"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Webhook post (write -- delayed for audit)"
+
 # Destructive -- Deny
 [[rules]]
 pattern = "discord.com"
 path_regex = "^/api/[^/]+/channels/[^/]+/messages/.*"
 method = "DELETE"
 decision = { type = "Deny", reason = "Delete message (destructive -- blocked)" }
+
+[[rules]]
+pattern = "discord.com"
+path_regex = "^/api/[^/]+/channels/[^/]+"
+method = "DELETE"
+decision = { type = "Deny", reason = "Delete channel (destructive -- blocked)" }
+
+[[rules]]
+pattern = "discord.com"
+path_regex = "^/api/[^/]+/guilds/[^/]+"
+method = "DELETE"
+decision = { type = "Deny", reason = "Delete guild (destructive -- blocked)" }
+
+[[rules]]
+pattern = "discord.com"
+path_regex = "^/api/[^/]+/guilds/[^/]+/members/[^/]+"
+method = "DELETE"
+decision = { type = "Deny", reason = "Kick member (destructive -- blocked)" }

@@ -4,54 +4,63 @@
 
 # Read operations -- Allow
 [[rules]]
-pattern = "api.telegram.org/bot{any}/getUpdates"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/getUpdates$"
 method = "POST"
 decision = { type = "Allow" }
 reason = "Receive messages (read-only)"
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/getMe"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/getMe$"
 method = "POST"
 decision = { type = "Allow" }
 reason = "Bot identity check (read-only)"
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/getChat"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/getChat$"
 method = "POST"
 decision = { type = "Allow" }
 reason = "Get chat info (read-only)"
 
 # Write operations -- Delay
 [[rules]]
-pattern = "api.telegram.org/bot{any}/sendMessage"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/sendMessage$"
 method = "POST"
 decision = { type = "Delay", milliseconds = 500 }
 reason = "Send message (write -- delayed for audit)"
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/sendDocument"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/sendDocument$"
 method = "POST"
 decision = { type = "Delay", milliseconds = 3000 }
 reason = "Send file (write -- 3s delay for audit)"
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/forwardMessage"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/forwardMessage$"
 method = "POST"
 decision = { type = "Delay", milliseconds = 1000 }
 reason = "Forward message (write -- 1s delay)"
 
 # Destructive -- Deny
 [[rules]]
-pattern = "api.telegram.org/bot{any}/deleteMessage"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/deleteMessage$"
 method = "POST"
 decision = { type = "Deny", reason = "Message deletion blocked" }
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/banChatMember"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/banChatMember$"
 method = "POST"
 decision = { type = "Deny", reason = "Ban user blocked" }
 
 [[rules]]
-pattern = "api.telegram.org/bot{any}/leaveChat"
+pattern = "api.telegram.org"
+path_regex = "^/bot[^/]+/leaveChat$"
 method = "POST"
 decision = { type = "Deny", reason = "Leave chat blocked" }
