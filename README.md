@@ -141,14 +141,15 @@ If the agent uses `gvm_fetch` → intent is automatic. If the agent bypasses
 
 ## Preset Rulesets
 
-11 rulesets covering top OpenClaw skills. Pattern: **read → Allow, write → Delay, delete → Deny**.
+12 rulesets covering top OpenClaw skills and messaging channels. Pattern: **read → Allow, write → Delay, delete → Deny**.
 
-| Ruleset | Skills covered | Domains |
-|---------|---------------|---------|
-| `google-workspace.toml` | gmail, google-calendar, google-drive, himalaya | gmail.googleapis.com, www.googleapis.com |
+| Ruleset | Skills / Channels | Domains |
+|---------|------------------|---------|
+| `google-workspace.toml` | gmail, google-calendar, google-drive, gog | gmail.googleapis.com, www.googleapis.com |
 | `github.toml` | github, gh-issues, coding-agent | api.github.com |
 | `slack.toml` | slack | slack.com/api |
 | `discord.toml` | discord | discord.com/api |
+| `telegram.toml` | telegram channel, bot integrations | api.telegram.org |
 | `llm-providers.toml` | anthropic, openai, gemini, groq, openrouter | api.anthropic.com, api.openai.com, generativelanguage.googleapis.com, api.groq.com, openrouter.ai |
 | `web-browsing.toml` | brave-search, firecrawl, tavily, serper | api.search.brave.com, api.firecrawl.dev, api.tavily.com, google.serper.dev |
 | `notion.toml` | notion | api.notion.com |
@@ -157,7 +158,9 @@ If the agent uses `gvm_fetch` → intent is automatic. If the agent bypasses
 | `spotify.toml` | spotify-player | api.spotify.com |
 | `weather.toml` | weather | wttr.in, api.open-meteo.com |
 
-Notable policy updates: `github.toml` adds Deny for merge and repo delete. `slack.toml` adds Deny for channel archive and user kick.
+**Officially supported messaging channels:** Telegram (Bot API) and Discord (Webhook/REST API) are covered by dedicated rulesets with graduated enforcement. WhatsApp integration uses WebSocket protocol which requires L4 proxy support (planned v0.3).
+
+Notable policy updates: `github.toml` adds Deny for merge and repo delete. `slack.toml` adds Deny for channel archive and user kick. `telegram.toml` adds Deny for message deletion and user banning.
 
 Unmatched domains → Default-to-Caution (300ms delay + audit log).
 

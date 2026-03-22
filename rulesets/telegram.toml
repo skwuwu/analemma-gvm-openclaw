@@ -1,0 +1,57 @@
+# GVM Ruleset: Telegram Bot API
+# Covers: telegram channel, bot integrations
+# Domains: api.telegram.org
+
+# Read operations -- Allow
+[[rules]]
+pattern = "api.telegram.org/bot{any}/getUpdates"
+method = "POST"
+decision = { type = "Allow" }
+reason = "Receive messages (read-only)"
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/getMe"
+method = "POST"
+decision = { type = "Allow" }
+reason = "Bot identity check (read-only)"
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/getChat"
+method = "POST"
+decision = { type = "Allow" }
+reason = "Get chat info (read-only)"
+
+# Write operations -- Delay
+[[rules]]
+pattern = "api.telegram.org/bot{any}/sendMessage"
+method = "POST"
+decision = { type = "Delay", milliseconds = 500 }
+reason = "Send message (write -- delayed for audit)"
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/sendDocument"
+method = "POST"
+decision = { type = "Delay", milliseconds = 3000 }
+reason = "Send file (write -- 3s delay for audit)"
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/forwardMessage"
+method = "POST"
+decision = { type = "Delay", milliseconds = 1000 }
+reason = "Forward message (write -- 1s delay)"
+
+# Destructive -- Deny
+[[rules]]
+pattern = "api.telegram.org/bot{any}/deleteMessage"
+method = "POST"
+decision = { type = "Deny", reason = "Message deletion blocked" }
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/banChatMember"
+method = "POST"
+decision = { type = "Deny", reason = "Ban user blocked" }
+
+[[rules]]
+pattern = "api.telegram.org/bot{any}/leaveChat"
+method = "POST"
+decision = { type = "Deny", reason = "Leave chat blocked" }
